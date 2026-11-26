@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gambit Arena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus+SC&family=Barlow+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* One visual world, single theme: a night tournament hall. Felt green board, ivory and brass.
+   Layout: full-screen 3D board. Chess phase has a move panel top-left; duels pin health and the two
+   ability cooldowns bottom-left, the opponent's health top-centre. */
+:root{
+  color-scheme: dark;
+  --ink:#141824;        /* hall darkness */
+  --panel:#1c2231;      /* raised surfaces */
+  --line:#34405a;       /* hairlines */
+  --ivory:#ece4d0;      /* text, white pieces */
+  --muted:#9aa3b5;      /* secondary text */
+  --brass:#c9a24a;      /* accent */
+  --harm:#d1493f;       /* damage, captures */
+  --ready:#58b8a8;      /* ability ready */
+  --display:'Marcellus SC', 'Palatino Linotype', Georgia, serif;
+  --body:'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--ink);color:var(--ivory);font-family:var(--body);font-size:18px;overflow:hidden;user-select:none;-webkit-user-select:none}
+canvas#view{position:absolute;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
+.hidden{display:none !important}
+kbd{display:inline-block;min-width:20px;padding:0 5px;margin-right:5px;border:1px solid var(--line);border-radius:3px;
+  font:600 13px var(--body);color:var(--brass);text-align:center;vertical-align:1px;white-space:nowrap}
+.btn{padding:12px 26px;background:var(--brass);color:#1a1508;border:0;border-radius:3px;font-family:var(--display);font-size:22px;letter-spacing:.05em}
+.btn:hover{background:#dab559}
+.btn.ghost{background:transparent;color:var(--ivory);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--ivory);background:transparent}
+.btn.small{padding:5px 12px;font-size:16px}
+
+/* ---------- menu ---------- */
+#menu{position:absolute;inset:0;overflow-y:auto;padding:28px 20px 36px;
+  background:linear-gradient(180deg,rgba(20,24,36,.88),rgba(20,24,36,.74) 40%,rgba(20,24,36,.93))}
+.menu-inner{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.masthead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 22px}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(34px,5vw,54px);margin:0;letter-spacing:.04em;text-wrap:balance}
+h1 span{color:var(--brass)}
+.masthead p{margin:0;color:var(--muted);max-width:60ch;font-size:19px}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 26px;margin:0;padding:0;list-style:none}
+.rules li{font-size:17px;line-height:1.25;color:var(--muted);border-top:1px solid var(--line);padding-top:8px}
+.rules b{display:block;color:var(--ivory);font-weight:500;font-size:18px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(172px,1fr));gap:12px}
+.card{display:flex;flex-direction:column;gap:8px;padding:14px 14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:4px}
+.card .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card .glyph{font-size:40px;line-height:1}
+.card .val{font-size:15px;color:var(--brass);text-transform:uppercase;letter-spacing:.08em;text-align:right}
+.card h2{font-family:var(--display);font-weight:400;font-size:24px;margin:0;letter-spacing:.04em}
+.card ul, #kit{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.card li, #kit li{font-size:16px;line-height:1.2;color:var(--muted)}
+.card li b, #kit li b{color:var(--ivory);font-weight:500}
+.go{display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px}
+.keys{color:var(--muted);font-size:17px;display:flex;flex-wrap:wrap;gap:6px 16px}
+.keys span{white-space:nowrap}
+.online{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;border-top:1px solid var(--line);padding-top:16px}
+.online form{display:flex;align-items:center;gap:8px;margin:0}
+.online label{color:var(--muted);font-size:17px}
+.online input{width:7.5em;padding:10px 12px;background:var(--ink);border:1px solid var(--line);border-radius:3px;color:var(--ivory);
+  font:600 20px var(--body);letter-spacing:.2em;text-transform:uppercase;user-select:text;-webkit-user-select:text}
+.online input:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.online .btn{font-size:19px;padding:10px 18px}
+.online .btn:disabled, .online input:disabled{opacity:.45;cursor:default}
+#onlineNote{color:var(--muted);font-size:16px;flex-basis:100%}
+#lobbyCode{font:600 clamp(40px,9vw,64px) var(--body);letter-spacing:.22em;color:var(--brass);user-select:text;-webkit-user-select:text}
+#netLine{font-size:15px;color:var(--ready)}
+
+/* ---------- chess phase ---------- */
+#side{position:absolute;left:16px;top:14px;width:min(250px,60vw);background:rgba(28,34,49,.88);border:1px solid var(--line);border-radius:4px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+#turn{font-family:var(--display);font-size:22px;letter-spacing:.05em}
+#tip{font-size:16px;color:var(--muted);line-height:1.2}
+#moves{display:grid;grid-template-columns:2.2em 1fr 1fr;gap:1px 8px;font-size:17px;font-variant-numeric:tabular-nums;max-height:176px;overflow:hidden;align-content:end}
+#moves .n{color:var(--muted)}
+#moves .lost{color:var(--harm)}
+#score{font-size:16px;color:var(--muted)}
+
+/* ---------- duel HUD ---------- */
+#hud{position:absolute;inset:0;pointer-events:none}
+#cross{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px}
+#cross::before,#cross::after{content:"";position:absolute;background:var(--ivory);opacity:.9}
+#cross::before{left:10px;top:0;width:2px;height:22px;clip-path:polygon(0 0,100% 0,100% 32%,0 32%,0 68%,100% 68%,100% 100%,0 100%)}
+#cross::after{top:10px;left:0;height:2px;width:22px;clip-path:polygon(0 0,32% 0,32% 100%,0 100%,68% 100%,68% 0,100% 0,100% 100%)}
+#cross.hit::before,#cross.hit::after{background:var(--harm)}
+#cross.head::before,#cross.head::after{background:var(--brass)}
+#cross.head{transform:scale(1.5)}
+#scope{position:absolute;inset:0;opacity:0;background:radial-gradient(circle at 50% 50%,transparent 0,transparent min(34vh,34vw),rgba(8,10,16,.97) calc(min(34vh,34vw) + 3px))}
+#scope::before,#scope::after{content:"";position:absolute;background:rgba(236,228,208,.55)}
+#scope::before{left:50%;top:calc(50% - min(34vh,34vw));width:1px;height:calc(min(34vh,34vw) * 2)}
+#scope::after{top:50%;left:calc(50% - min(34vh,34vw));height:1px;width:calc(min(34vh,34vw) * 2)}
+#scope.on{opacity:1}
+#scope.on ~ #cross{opacity:0}
+#bl{position:absolute;left:18px;bottom:18px;width:min(320px,70vw);display:flex;flex-direction:column;gap:8px}
+#who{font-family:var(--display);font-size:26px;letter-spacing:.05em;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+#who small{font-family:var(--body);font-size:16px;color:var(--muted);letter-spacing:0}
+.bar{height:14px;background:rgba(20,24,36,.7);border:1px solid var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ivory);width:100%}
+.bar.low i{background:var(--harm)}
+#hpText{font-variant-numeric:tabular-nums;font-size:17px;color:var(--muted)}
+#chips{display:flex;gap:8px}
+.chip{flex:1;padding:6px 8px 7px;background:rgba(28,34,49,.86);border:1px solid var(--line);border-top:3px solid var(--ready);border-radius:3px;position:relative}
+.chip .k{font-weight:600;color:var(--brass);font-size:15px}
+.chip .n{font-size:16px;line-height:1.05;display:block}
+.chip .t{position:absolute;right:7px;top:3px;font-variant-numeric:tabular-nums;font-size:16px;color:var(--muted)}
+.chip.cool{border-top-color:var(--line)}
+.chip.cool .n{color:var(--muted)}
+#foe{position:absolute;left:50%;top:16px;transform:translateX(-50%);width:min(340px,60vw);display:flex;flex-direction:column;gap:5px;text-align:center}
+#foeName{font-family:var(--display);font-size:20px;letter-spacing:.05em}
+#foe .bar i{background:var(--harm)}
+#banner{position:absolute;left:0;right:0;top:22%;text-align:center;font-family:var(--display);font-size:clamp(26px,4.4vw,46px);letter-spacing:.06em;
+  text-shadow:0 2px 18px rgba(0,0,0,.8);opacity:0;transition:opacity .3s;pointer-events:none}
+#banner.show{opacity:1}
+#banner small{display:block;font-family:var(--body);font-size:20px;letter-spacing:.02em;color:var(--brass)}
+#hurt{position:absolute;inset:0;box-shadow:inset 0 0 140px 30px var(--harm);opacity:0}
+#shield{position:absolute;inset:0;box-shadow:inset 0 0 90px 10px var(--brass);opacity:0}
+
+/* ---------- dialogs ---------- */
+.veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(20,24,36,.78);overflow-y:auto}
+.veil .box{max-width:520px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:26px 28px;display:flex;flex-direction:column;gap:16px}
+.veil h2{font-family:var(--display);font-weight:400;font-size:clamp(28px,5vw,38px);margin:0;letter-spacing:.05em;text-wrap:balance}
+.veil p{margin:0;color:var(--muted);font-size:19px}
+.veil p.role{color:var(--brass)}
+.veil dl{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;margin:0;font-size:19px;font-variant-numeric:tabular-nums}
+.veil dt{color:var(--muted)} .veil dd{margin:0}
+.veil .row{display:flex;flex-wrap:wrap;gap:10px}
+@media (prefers-reduced-motion:reduce){ #banner{transition:none} }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="side" class="hidden">
+  <div id="turn">Your move</div>
+  <div id="tip">Click a white piece, then a marked square. Red squares start a duel.</div>
+  <div id="moves"></div>
+  <div id="score">Duels won 0 · lost 0</div>
+  <div id="netLine" class="hidden"></div>
+  <div><button class="btn ghost small" id="leave">Leave match</button></div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="hurt"></div><div id="shield"></div>
+  <div id="scope"></div>
+  <div id="cross"></div>
+  <div id="foe"><div id="foeName">Black Knight</div><div class="bar" id="foeBar"><i></i></div></div>
+  <div id="bl">
+    <div id="who"><span id="whoName">Pawn</span><small id="whoWeapon"></small></div>
+    <div class="bar" id="hpBar"><i></i></div>
+    <div id="hpText">100 / 100</div>
+    <div id="chips"></div>
+  </div>
+</div>
+<div id="banner"></div>
+
+<div id="menu">
+  <div class="menu-inner">
+    <div class="masthead">
+      <h1>Gambit <span>Arena</span></h1>
+      <p>Chess where every capture is a first-person duel. Play the computer, or a friend online with a match code. Move by the normal rules, then fight for the square.</p>
+    </div>
+    <ul class="rules">
+      <li><b>Captures are duels</b>The winner holds the square and the loser leaves the board, so a Pawn can beat a Queen.</li>
+      <li><b>No check, no checkmate</b>You win only by defeating the enemy King in a duel.</li>
+      <li><b>Normal chess moves</b>Castling, en passant and promotion all work. Pawns promote to a Queen.</li>
+      <li><b>The board is the arena</b>Every other piece stays on its square as cover during a duel.</li>
+      <li><b>Aim for the head</b>The top of every piece takes bonus damage. A scoped Rook headshot is an instant kill.</li>
+      <li><b>Cover heals</b>Go four seconds without being hit and your health climbs back.</li>
+    </ul>
+    <div class="cards" id="cards"></div>
+    <div class="go">
+      <button class="btn" id="play">Play the computer</button>
+      <div class="keys">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>move</span>
+        <span><kbd>Left click</kbd>weapon</span>
+        <span><kbd>Right click</kbd>block or scope</span>
+        <span><kbd>Shift</kbd><kbd>E</kbd>abilities</span>
+        <span><kbd>Space</kbd>jump</span>
+      </div>
+    </div>
+    <div class="online">
+      <button class="btn ghost" id="create" type="button" disabled>Create online match</button>
+      <form id="joinForm">
+        <label for="codeIn">or enter a code</label>
+        <input id="codeIn" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" disabled>
+        <button class="btn ghost" id="join" type="submit" disabled>Join</button>
+      </form>
+      <span id="onlineNote">Checking whether online play is available.</span>
+    </div>
+  </div>
+</div>
+
+<div id="lobby" class="veil hidden">
+  <div class="box">
+    <h2 id="lobbyTitle">Match code</h2>
+    <div id="lobbyCode"></div>
+    <p id="lobbyText"></p>
+    <div class="row"><button class="btn ghost" id="copy" type="button">Copy code</button><button class="btn ghost" id="cancel" type="button">Cancel</button></div>
+  </div>
+</div>
+
+<div id="intro" class="veil hidden">
+  <div class="box">
+    <h2 id="introTitle">Knight takes Bishop on e5</h2>
+    <p class="role" id="introRole"></p>
+    <ul id="kit"></ul>
+    <div class="row"><button class="btn" id="fight">Fight</button></div>
+  </div>
+</div>
+
+<div id="pause" class="veil hidden">
+  <div class="box">
+    <h2>Paused</h2>
+    <p id="pauseHint">Click Resume to capture the mouse again.</p>
+    <div class="row"><button class="btn" id="resume">Resume</button><button class="btn ghost" id="quit">Leave match</button></div>
+  </div>
+</div>
+
+<div id="end" class="veil hidden">
+  <div class="box">
+    <h2 id="endTitle">Victory</h2>
+    <p id="endText"></p>
+    <dl id="endStats"></dl>
+    <div class="row"><button class="btn" id="again">Play again</button><button class="btn ghost" id="toMenu">Back to menu</button></div>
+  </div>
+</div>
+
+<div id="fail" class="veil hidden"><div class="box"><h2>Could not start</h2><p>The 3D library did not load. Check your connection and reload the page.</p></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+if (typeof THREE === 'undefined') { $('fail').classList.remove('hidden'); return; }
+
+/* ================= constants ================= */
+const SQ = 8, HALF = 32, ROOM = 35, GRAV = 30, SCALE = 1.4, WIDE = 2.2, HIGH = 1.6, COVER_R = 1.75,   // board pieces are wide and tall enough to hide behind
+   BOT_DMG = .6, FILES = 'abcdefgh';
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
+const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+const sqName = i => FILES[i & 7] + (8 - (i >> 3));
+const sqIdx = n => (8 - (+n[1])) * 8 + FILES.indexOf(n[0]);
+const sqX = i => -HALF + (i & 7) * SQ + SQ / 2, sqZ = i => -HALF + (i >> 3) * SQ + SQ / 2;
+const KVAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+const NAME = { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King' };
+const GLYPH = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+const MODEL = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+const TALL = { p: 2.25, n: 2.8, b: 3.1, r: 2.7, q: 3.3, k: 3.7 };
+
+/* ================= the six classes ================= */
+const HEAD = .7;   // the top 30% of a piece is its head
+const KITS = {
+  p: { hp: 100, speed: 9, block: true, range: 22, err: .05,
+    weapon: { name: 'Musket', kind: 'hit', dmg: 34, rate: 1, range: 120, spread: .004, pellets: 1, head: 2 },
+    ab: [{ name: 'Sprint', desc: 'Run fast with your guard up until you attack or block. Jump to shoot without stopping. No cooldown.', cd: .4 },
+         { name: 'Reinforcements', desc: 'Summon a pawn that marches forward shooting. Recharges 7 seconds after it falls.', cd: 7 }] },
+  n: { hp: 110, speed: 10, range: 24, err: .04,
+    weapon: { name: 'Bow', kind: 'proj', charge: true, dmg: 60, rate: .3, speed: 95, drop: 9, size: .14, head: 2 },
+    ab: [{ name: 'Trample', desc: 'Charge forward, damaging and knocking back.', cd: 7 },
+         { name: 'Guided Arrow', desc: 'An arrow that follows your crosshair in flight.', cd: 9 }] },
+  b: { hp: 110, speed: 9.5, range: 10, err: .03,
+    weapon: { name: 'Blunderbuss', kind: 'hit', dmg: 5, rate: .95, range: 34, spread: .11, pellets: 20, head: 1.5, falloff: [6, 30, .15] },
+    ab: [{ name: 'Divine Wings', desc: 'Launch from the ground and glide for up to 15 seconds. No cooldown.', cd: .6 },
+         { name: 'Bomb', desc: 'Ready a bomb, then left click to throw it. Press E again to put it away for free.', cd: 5 }] },
+  r: { hp: 120, speed: 8, range: 34, err: .035, scope: true,
+    weapon: { name: 'Sniper Rifle', kind: 'hit', dmg: 50, rate: 1.7, range: 150, spread: .075, pellets: 1, head: 'kill' },
+    ab: [{ name: 'Grappling Hook', desc: 'Pull yourself to the point you aim at.', cd: 7 },
+         { name: 'Deployable Wall', desc: 'Raise a wall in front of you for 10 seconds.', cd: 10 }] },
+  q: { hp: 130, speed: 10, range: 20, err: .06,
+    weapon: { name: 'Minigun', kind: 'hit', dmg: 6, rate: .07, range: 90, spread: .035, pellets: 1, head: 1.5 },
+    ab: [{ name: 'Free Flight', desc: 'Fly anywhere for 4 seconds. Look up to climb.', cd: 10 },
+         { name: 'Telekinesis', desc: 'Lift a bystander piece as a shield. Press E again to hurl it.', cd: 9 }] },
+  k: { hp: 150, speed: 8.5, block: true, range: 3, err: .02,
+    weapon: { name: 'Greatsword', kind: 'melee', dmg: 55, rate: .8, range: 5 },
+    ab: [{ name: 'Light Pull', desc: 'Drag the enemy toward you.', cd: 8 },
+         { name: 'Ground Pound', desc: 'Leap and slam down for area damage.', cd: 9 }] }
+};
+const altRow = K => K.block ? ['Right click', 'Block', 'Cuts damage from the front by 75%, explosions included. Your back stays open.']
+  : K.scope ? ['Right click', 'Scope', 'Zoom in for a steady shot. Unscoped shots scatter badly.'] : null;
+
+/* ================= renderer and scene ================= */
+const canvas = $('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x141824);
+scene.fog = new THREE.Fog(0x141824, 60, 170);
+const camera = new THREE.PerspectiveCamera(75, 1, .1, 400);
+camera.rotation.order = 'YXZ';
+scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a3040, .85));
+const sun = new THREE.DirectionalLight(0xfff1d0, .9); sun.position.set(20, 50, 30); scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8fb0ff, .35); fill.position.set(-30, 20, -40); scene.add(fill);
+let aspect = 1.6;
+function resize() {
+  const w = window.innerWidth || 800, h = window.innerHeight || 600;
+  renderer.setSize(w, h, false); aspect = w / h;
+  camera.aspect = aspect; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+(function buildRoom() {
+  const c = document.createElement('canvas'); c.width = c.height = 1152;
+  const g = c.getContext('2d'), m = 64, s = 128;
+  g.fillStyle = '#1d2230'; g.fillRect(0, 0, 1152, 1152);
+  for (let f = 0; f < 8; f++) for (let r = 0; r < 8; r++) { g.fillStyle = (f + r) % 2 ? '#3f5a52' : '#d9cfb4'; g.fillRect(m + f * s, m + r * s, s, s); }
+  g.strokeStyle = '#c9a24a'; g.lineWidth = 6; g.strokeRect(m - 3, m - 3, s * 8 + 6, s * 8 + 6);
+  g.fillStyle = '#c9a24a'; g.font = '40px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let i = 0; i < 8; i++) {
+    g.fillText(FILES[i], m + i * s + s / 2, 1152 - m / 2); g.fillText(FILES[i], m + i * s + s / 2, m / 2);
+    g.fillText(String(8 - i), m / 2, m + i * s + s / 2); g.fillText(String(8 - i), 1152 - m / 2, m + i * s + s / 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  if (renderer.capabilities && renderer.capabilities.getMaxAnisotropy) tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(72, 72), new THREE.MeshLambertMaterial({ map: tex }));
+  floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0x262d40 }), brass = new THREE.MeshLambertMaterial({ color: 0xc9a24a });
+  for (const [x, z, w, d] of [[0, -36.5, 74, 1], [0, 36.5, 74, 1], [-36.5, 0, 1, 74], [36.5, 0, 1, 74]]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), wallMat); wall.position.set(x, 2, z); scene.add(wall);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(w + .3, .3, d + .3), brass); cap.position.set(x, 4.15, z); scene.add(cap);
+  }
+})();
+
+/* ================= piece models (lathe-turned) ================= */
+const BASE = [[0, 0], [.95, 0], [1, .12], [.8, .3], [.62, .42]];
+const PROFILE = {
+  pawn:   [...BASE, [.56, .7], [.5, 1.3], [.62, 1.4], [.4, 1.52], [0, 1.55]],
+  knight: [...BASE, [.66, .6], [.68, .95], [0, 1.0]],
+  bishop: [...BASE, [.56, .8], [.5, 1.9], [.64, 2.0], [.4, 2.12], [0, 2.15]],
+  rook:   [...BASE, [.68, .6], [.66, 1.95], [.8, 2.1], [.8, 2.45], [0, 2.45]],
+  queen:  [...BASE, [.58, .8], [.5, 2.3], [.66, 2.42], [.5, 2.55], [.7, 2.95], [0, 2.8]],
+  king:   [...BASE, [.6, .8], [.52, 2.5], [.68, 2.62], [.52, 2.75], [.72, 3.1], [0, 3.1]]
+};
+const geoCache = {};
+// run a spline through each profile and turn it finely, so the pieces read as polished wood rather than facets
+function smoothProfile(pts) {
+  const curve = new THREE.SplineCurve(pts.map(p => new THREE.Vector2(p[0], p[1])));
+  const out = curve.getPoints(pts.length * 7);
+  for (const v of out) { if (v.x < 0) v.x = 0; if (v.y < 0) v.y = 0; }
+  return out;
+}
+const latheGeo = t => geoCache[t] || (geoCache[t] = new THREE.LatheGeometry(smoothProfile(PROFILE[t]), 56));
+const GEO = { sph: new THREE.SphereGeometry(1, 32, 22), box: new THREE.BoxGeometry(1, 1, 1), cone: new THREE.ConeGeometry(1, 1, 24), plane: new THREE.PlaneGeometry(1, 1) };
+function makePiece(type, mat) {
+  const g = new THREE.Group();
+  const add = (geo, sx, sy, sz, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); g.add(m); return m; };
+  g.add(new THREE.Mesh(latheGeo(type), mat));
+  if (type === 'pawn') add(GEO.sph, .52, .46, .52, 0, 1.88, 0);
+  if (type === 'bishop') { add(GEO.sph, .5, .58, .5, 0, 2.6, 0); add(GEO.sph, .13, .13, .13, 0, 3.2, 0); }
+  if (type === 'rook') for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; add(GEO.box, .42, .32, .42, Math.cos(a) * .52, 2.6, Math.sin(a) * .52); }
+  if (type === 'knight') {
+    const neck = add(GEO.sph, .56, .98, .6, 0, 1.62, .02); neck.rotation.x = .3;
+    const head = add(GEO.sph, .44, .42, .7, 0, 2.32, .42); head.rotation.x = .25;
+    add(GEO.sph, .24, .24, .3, 0, 2.14, .92);
+    const mane = add(GEO.sph, .1, .8, .34, 0, 1.95, -.3); mane.rotation.x = .3;
+    add(GEO.cone, .11, .36, .11, -.17, 2.74, .2); add(GEO.cone, .11, .36, .11, .17, 2.74, .2);
+  }
+  if (type === 'queen') {
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; add(GEO.sph, .11, .11, .11, Math.cos(a) * .56, 3.02, Math.sin(a) * .56); }
+    add(GEO.sph, .2, .2, .2, 0, 3.02, 0);
+  }
+  if (type === 'king') { add(GEO.box, .16, .62, .16, 0, 3.42, 0); add(GEO.box, .5, .16, .16, 0, 3.48, 0); }
+  return g;
+}
+const matWhite = () => new THREE.MeshPhongMaterial({ color: 0xe9e0c8, specular: 0x55504a, shininess: 55, side: THREE.DoubleSide });
+const matBlack = () => new THREE.MeshPhongMaterial({ color: 0x3a2c46, emissive: 0x1c0a18, specular: 0x6a5a78, shininess: 70, side: THREE.DoubleSide });
+
+/* ================= state ================= */
+const S = { mode: 'menu', paused: false, drag: false, autoplay: false, turn: 'w', ep: null, sel: -1, legal: [], last: null, aiT: 0,
+  pending: null, winner: null, afterT: 0, shake: 0, ply: 0, won: 0, lost: 0, log: [], logBase: 0,
+  online: false, me: 'w', role: null, code: '', seq: 0, did: 0, verdict: null, over: null };
+// online play: everything travels as presence (absolute state), so a dropped update heals itself
+const net = { lobby: null, room: null, opp: null, oppPeer: null, started: false, req: null, sent: {}, sendT: 0,
+  dealt: 0, fireN: 0, seenFn: 0, ev: [], evId: 0, seenEv: 0, oppReady: true, waitShown: false, full: false };
+let bd = new Array(64).fill(null);      // the chess position
+let A = null, B = null;                 // duelists: A is White (you), B is Black
+let cyl = [], minions = [], shots = [], walls = [], fx = [], rayOwner = null;
+const keys = {}; let firing = false, blocking = false;
+
+/* ================= chess rules ================= */
+function genMoves(b, c, ep) {
+  const out = [];
+  const step = (from, r, f) => {          // returns true if a slider may continue
+    if (r < 0 || r > 7 || f < 0 || f > 7) return false;
+    const to = r * 8 + f, t = b[to];
+    if (t) { if (t.c !== c) out.push({ from, to, cap: to }); return false; }
+    out.push({ from, to, cap: -1 }); return true;
+  };
+  for (let i = 0; i < 64; i++) {
+    const p = b[i]; if (!p || p.c !== c) continue;
+    const r = i >> 3, f = i & 7;
+    if (p.t === 'p') {
+      const d = c === 'w' ? -1 : 1, home = c === 'w' ? 6 : 1, nr = r + d;
+      if (nr < 0 || nr > 7) continue;
+      const promo = nr === 0 || nr === 7;
+      if (!b[nr * 8 + f]) {
+        out.push({ from: i, to: nr * 8 + f, cap: -1, promo });
+        if (r === home && !b[(r + 2 * d) * 8 + f]) out.push({ from: i, to: (r + 2 * d) * 8 + f, cap: -1, dbl: true });
+      }
+      for (const df of [-1, 1]) {
+        const nf = f + df; if (nf < 0 || nf > 7) continue;
+        const to = nr * 8 + nf, t = b[to];
+        if (t && t.c !== c) out.push({ from: i, to, cap: to, promo });
+        else if (!t && ep && ep.sq === to && b[ep.pawn] && b[ep.pawn].c !== c) out.push({ from: i, to, cap: ep.pawn, ep: true });
+      }
+    } else if (p.t === 'n') {
+      for (const [dr, df] of [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]]) step(i, r + dr, f + df);
+    } else if (p.t === 'k') {
+      for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) if (dr || df) step(i, r + dr, f + df);
+      if (!p.moved && f === 4 && r === (c === 'w' ? 7 : 0)) {
+        const rk = b[r * 8 + 7], rq = b[r * 8];
+        if (rk && rk.t === 'r' && rk.c === c && !rk.moved && !b[r * 8 + 5] && !b[r * 8 + 6]) out.push({ from: i, to: r * 8 + 6, cap: -1, castle: 7 });
+        if (rq && rq.t === 'r' && rq.c === c && !rq.moved && !b[r * 8 + 1] && !b[r * 8 + 2] && !b[r * 8 + 3]) out.push({ from: i, to: r * 8 + 2, cap: -1, castle: 0 });
+      }
+    } else {
+      const dirs = [];
+      if (p.t !== 'b') dirs.push([1, 0], [-1, 0], [0, 1], [0, -1]);
+      if (p.t !== 'r') dirs.push([1, 1], [1, -1], [-1, 1], [-1, -1]);
+      for (const [dr, df] of dirs) { let rr = r + dr, ff = f + df; while (step(i, rr, ff)) { rr += dr; ff += df; } }
+    }
+  }
+  return out;
+}
+function newPiece(t, c, i) {
+  const mat = c === 'w' ? matWhite() : matBlack(), mesh = makePiece(MODEL[t], mat);
+  mesh.scale.set(WIDE, HIGH, WIDE); mesh.position.set(sqX(i), 0, sqZ(i)); mesh.rotation.y = c === 'b' ? Math.PI : 0;
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xd1493f })); tag.position.set(0, TALL[t] + .5, 0); tag.scale.set(1.3, .13, 1); tag.visible = false; mesh.add(tag);
+  scene.add(mesh);
+  return { t, c, moved: false, mesh, mat, tag, px: sqX(i), pz: sqZ(i), sq: i };
+}
+function setBoard(list) {              // list of "e1:wk" strings
+  for (const p of bd) if (p) scene.remove(p.mesh);
+  bd = new Array(64).fill(null);
+  for (const item of list) { const [sq, pc] = item.split(':'), i = sqIdx(sq); bd[i] = newPiece(pc[1], pc[0], i); }
+}
+function resetBoard() {
+  const list = [], back = 'rnbqkbnr';
+  for (let f = 0; f < 8; f++) list.push(FILES[f] + '8:b' + back[f], FILES[f] + '7:bp', FILES[f] + '2:wp', FILES[f] + '1:w' + back[f]);
+  setBoard(list);
+}
+function place(p, to) { bd[p.sq] = bd[p.sq] === p ? null : bd[p.sq]; bd[to] = p; p.sq = to; p.moved = true; }
+function removePiece(p) { if (bd[p.sq] === p) bd[p.sq] = null; scene.remove(p.mesh); }
+function promote(p) {
+  scene.remove(p.mesh); const n = newPiece('q', p.c, p.sq);
+  n.mesh.position.set(p.px, 0, p.pz); n.px = p.px; n.pz = p.pz; n.moved = true; bd[p.sq] = n; return n;
+}
+function notate(m, p, how) {           // how: '' quiet, 'won', 'lost'
+  if (m.castle === 7) return 'O-O'; if (m.castle === 0) return 'O-O-O';
+  const cap = m.cap >= 0, L = p.t === 'p' ? (cap ? FILES[m.from & 7] : '') : p.t.toUpperCase();
+  return L + (cap ? 'x' : '') + sqName(m.to) + (m.promo && how !== 'lost' ? '=Q' : '');
+}
+function logMove(text, lost) { S.log.push({ text, lost: !!lost, c: S.turn }); drawMoves(); }
+function applyQuiet(m) {
+  const p = bd[m.from]; logMove(notate(m, p, ''));
+  place(p, m.to);
+  if (m.castle !== undefined) { const r = m.from >> 3, rook = bd[r * 8 + m.castle]; place(rook, r * 8 + (m.castle === 7 ? 5 : 3)); }
+  if (m.promo) promote(p);
+  S.last = [m.from, m.to];
+  endTurn(m.dbl ? { sq: (m.from + m.to) >> 1, pawn: m.to } : null);
+}
+function resolveCapture(m, attackerWon) {
+  const a = bd[m.from], v = bd[m.cap]; let over = null;
+  if (attackerWon) {
+    logMove(notate(m, a, 'won') + (v.t === 'k' ? '#' : ''));
+    removePiece(v); place(a, m.to); if (m.promo) promote(a);
+    if (v.t === 'k') over = a.c;
+  } else {
+    logMove(notate(m, a, 'lost'), true);
+    removePiece(a);
+    if (m.ep) place(v, m.to);          // en passant exception: the defender steps back onto the passed square
+    if (a.t === 'k') over = v.c;
+  }
+  S.last = [m.from, m.to];
+  if (over) return gameOver(over);
+  endTurn(null);
+}
+function endTurn(ep) { S.seq++; S.ep = ep; S.turn = S.turn === 'w' ? 'b' : 'w'; S.ply++; S.sel = -1; S.legal = []; S.aiT = .9; drawBoardUi(); }
+function doMove(m) {
+  if (m.cap < 0) return applyQuiet(m);
+  S.pending = m; S.sel = -1; S.legal = []; S.did++; S.seq++; S.verdict = null; showIntro(m);
+}
+function sendReq(m) { net.req = { seq: S.seq, from: m.from, to: m.to }; S.sel = -1; S.legal = []; drawBoardUi(); }
+function chooseMove(c) {
+  const ms = genMoves(bd, c, S.ep); if (!ms.length) return null;
+  const opp = c === 'w' ? 'b' : 'w'; let best = null, bs = -1e9;
+  for (const m of ms) {
+    const a = bd[m.from]; let s = rand(0, .45);
+    if (m.cap >= 0) { const v = bd[m.cap]; s += .5 * KVAL[v.t] - .5 * KVAL[a.t] + .3; }
+    const nb = bd.slice(); nb[m.from] = null; if (m.cap >= 0) nb[m.cap] = null; nb[m.to] = a;
+    let risk = 0;
+    for (const q of genMoves(nb, opp, null)) if (q.cap >= 0) { const g = .5 * KVAL[nb[q.cap].t] - .5 * KVAL[nb[q.from].t]; if (g > risk) risk = g; }
+    s -= risk * .8;
+    const r = m.to >> 3, f = m.to & 7;
+    if (a.t === 'p') { s += (c === 'b' ? r : 7 - r) * .06; if (m.promo) s += 4; }
+    else if (a.t !== 'k') s += (3.5 - Math.abs(3.5 - f)) * .04 + (3.5 - Math.abs(3.5 - r)) * .04;
+    if (m.castle !== undefined) s += .6;
+    if (s > bs) { bs = s; best = m; }
+  }
+  return best;
+}
+function clickSquare(i) {
+  if (S.mode !== 'board' || S.turn !== S.me || S.autoplay || net.req) return;
+  const m = S.legal.find(q => q.to === i);
+  if (m) return S.role === 'g' ? sendReq(m) : doMove(m);
+  const p = bd[i];
+  if (p && p.c === S.me && S.sel !== i) { S.sel = i; S.legal = genMoves(bd, S.me, S.ep).filter(q => q.from === i); }
+  else { S.sel = -1; S.legal = []; }
+  drawBoardUi();
+}
+
+/* ================= board markers and panel ================= */
+const marks = [];
+for (let i = 0; i < 34; i++) {
+  const m = new THREE.Mesh(GEO.plane, new THREE.MeshBasicMaterial({ color: 0xc9a24a, transparent: true, opacity: .5, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); marks.push(m);
+}
+function drawBoardUi() {
+  let n = 0;
+  const put = (i, color, size, op) => { const m = marks[n++]; if (!m) return; m.visible = true; m.position.set(sqX(i), .06 + n * .002, sqZ(i)); m.scale.set(size, size, 1); m.material.color.setHex(color); m.material.opacity = op; };
+  if (S.mode === 'board') {
+    if (S.last) for (const i of S.last) put(i, 0x58b8a8, 7.6, .3);
+    if (S.sel >= 0) put(S.sel, 0xece4d0, 7.6, .45);
+    for (const m of S.legal) put(m.to, m.cap >= 0 ? 0xd1493f : 0xc9a24a, m.cap >= 0 ? 7.6 : 3.2, m.cap >= 0 ? .55 : .7);
+  }
+  while (n < marks.length) marks[n++].visible = false;
+  $('turn').textContent = S.turn === S.me ? (net.req ? 'Sending your move' : 'Your move') : S.online ? 'Opponent\u2019s move' : 'Black is thinking';
+  $('tip').textContent = 'Click a ' + (S.me === 'w' ? 'white' : 'black') + ' piece, then a marked square. Red squares start a duel.';
+  $('score').textContent = 'Duels won ' + S.won + ' · lost ' + S.lost;
+}
+function drawMoves() {
+  const el = $('moves'); el.textContent = '';
+  const rows = []; for (let i = 0; i < S.log.length; i += 2) rows.push([(S.logBase + i) / 2 + 1, S.log[i], S.log[i + 1]]);
+  for (const [n, w, b] of rows.slice(-7)) {
+    const a = document.createElement('span'); a.className = 'n'; a.textContent = n + '.'; el.append(a);
+    for (const mv of [w, b]) { const s = document.createElement('span'); if (mv) { s.textContent = mv.text + (mv.lost ? ' ✗' : ''); if (mv.lost) s.className = 'lost'; } el.append(s); }
+  }
+}
+
+/* ================= sound ================= */
+let AC = null;
+function sfx(freq, dur, type, vol, slide) {
+  if (!AC) return;
+  try {
+    const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+    o.type = type || 'square'; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + dur);
+    g.gain.setValueAtTime(vol || .04, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+  } catch (e) {}
+}
+
+/* ================= effects ================= */
+function addFx(mesh, life, tick) { scene.add(mesh); fx.push({ mesh, life, max: life, tick }); }
+function beamFx(ax, ay, az, bx, by, bz, color, life, width) {
+  const len = Math.hypot(bx - ax, by - ay, bz - az) || .01;
+  const m = new THREE.Mesh(GEO.box, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .9 }));
+  const w = width || .06; m.scale.set(w, w, len); m.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); m.lookAt(bx, by, bz);
+  addFx(m, life || .12, (o, k) => { o.material.opacity = .9 * (1 - k); });
+}
+function ringFx(x, y, z, radius, color) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(.82, 1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .9, side: THREE.DoubleSide }));
+  m.rotation.x = -Math.PI / 2; m.position.set(x, y + .12, z);
+  addFx(m, .45, (o, k) => { const s = .5 + radius * k; o.scale.set(s, s, s); o.material.opacity = .9 * (1 - k); });
+}
+function burstFx(x, y, z, radius, color) {
+  const m = new THREE.Mesh(GEO.sph, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .8 })); m.position.set(x, y, z);
+  addFx(m, .3, (o, k) => { const s = .3 + radius * k; o.scale.set(s, s, s); o.material.opacity = .8 * (1 - k); });
+}
+
+/* ================= duel geometry ================= */
+function pushOut(o, r) {
+  for (const c of cyl) {
+    if (o.y >= c.h - .3 || c.holder === o) continue;
+    const dx = o.x - c.x, dz = o.z - c.z, d = Math.hypot(dx, dz), min = r + c.r;
+    if (d >= min) continue;
+    if (d > 1e-4) { o.x = c.x + dx / d * min; o.z = c.z + dz / d * min; } else o.x = c.x + min;
+  }
+  o.x = clamp(o.x, -ROOM + r, ROOM - r); o.z = clamp(o.z, -ROOM + r, ROOM - r);
+}
+function rayCyl(ox, oy, oz, dx, dy, dz, cx, cz, r, y0, y1) {
+  const a = dx * dx + dz * dz, fx_ = ox - cx, fz = oz - cz, c = fx_ * fx_ + fz * fz - r * r;
+  if (c < 0) return oy >= y0 && oy <= y1 ? 0 : Infinity;
+  if (a < 1e-9) return Infinity;
+  const b = fx_ * dx + fz * dz, disc = b * b - a * c; if (disc < 0) return Infinity;
+  const t = (-b - Math.sqrt(disc)) / a; if (t < 0) return Infinity;
+  const y = oy + dy * t; return y >= y0 && y <= y1 ? t : Infinity;
+}
+function worldDist(ox, oy, oz, dx, dy, dz) {
+  let t = 300;
+  if (dy < -1e-6) t = Math.min(t, -oy / dy); else if (dy > 1e-6) t = Math.min(t, (40 - oy) / dy);
+  if (dx > 1e-6) t = Math.min(t, (ROOM + 1 - ox) / dx); else if (dx < -1e-6) t = Math.min(t, (-ROOM - 1 - ox) / dx);
+  if (dz > 1e-6) t = Math.min(t, (ROOM + 1 - oz) / dz); else if (dz < -1e-6) t = Math.min(t, (-ROOM - 1 - oz) / dz);
+  for (const c of cyl) if (!c.holder || c.holder !== rayOwner) t = Math.min(t, rayCyl(ox, oy, oz, dx, dy, dz, c.x, c.z, c.r, 0, c.h));
+  return Math.max(0, t);
+}
+const foesOf = team => [A, B, ...minions].filter(o => o && o.team !== team && o.hp > 0);
+function castRay(ox, oy, oz, dx, dy, dz, range, team, pad) {
+  const end = Math.min(range, worldDist(ox, oy, oz, dx, dy, dz)); let hit = null, ht = end;
+  for (const o of foesOf(team)) { const t = rayCyl(ox, oy, oz, dx, dy, dz, o.x, o.z, o.r + (pad || .15), o.y - .1, o.y + o.h + .1); if (t < ht) { ht = t; hit = o; } }
+  return { end: ht, hit, head: !!hit && oy + dy * ht > hit.y + hit.h * HEAD };
+}
+function canSee(F, T) {
+  const ox = F.x, oy = F.y + F.eye, oz = F.z, dx = T.x - ox, dy = T.y + T.h * .6 - oy, dz = T.z - oz, l = Math.hypot(dx, dy, dz) || 1;
+  const prev = rayOwner; rayOwner = F;                    // a shield you are holding does not block your own view
+  const t = worldDist(ox, oy, oz, dx / l, dy / l, dz / l); rayOwner = prev;
+  return t >= l - .6;
+}
+const aim = F => { const cp = Math.cos(F.pitch); return { x: -Math.sin(F.yaw) * cp, y: Math.sin(F.pitch), z: -Math.cos(F.yaw) * cp }; };
+const muzzle = (F, d) => ({ x: F.x + d.x * 1.1 + Math.cos(F.yaw) * .4, y: F.y + F.eye - .3 + d.y * 1.1, z: F.z + d.z * 1.1 - Math.sin(F.yaw) * .4 });
+
+/* ================= damage ================= */
+function knock(o, kx, kz, vy, team) {
+  if (S.online && team === 1) return;                    // the opponent's hits on me arrive over the network
+  if (S.online && o === B) { net.ev.push({ id: ++net.evId, k: 'kn', x: +kx.toFixed(1), z: +kz.toFixed(1), y: vy || 0, t: 2 }); return; }
+  if (o.kvx === undefined) return;
+  o.kvx += kx; o.kvz += kz; if (vy && !o.minion) o.vy = Math.max(o.vy, vy);
+}
+function hurt(o, dmg, team, sx, sz, head) {
+  if (S.mode !== 'duel' || !o || o.hp <= 0) return;
+  if (S.online && (team === 1 || (o === B && !net.oppReady))) return;   // online, each player scores their own hits
+  if (o.blocking && sx !== undefined) {
+    const dx = sx - o.x, dz = sz - o.z, l = Math.hypot(dx, dz) || 1;
+    if ((-Math.sin(o.yaw) * dx - Math.cos(o.yaw) * dz) / l > .3) { dmg *= .25; sfx(1200, .05, 'triangle', .04); }
+  }
+  if (team === 1) dmg *= BOT_DMG;
+  o.flash = .1; o.sinceHit = 0;
+  if (team === 0 && o !== A) { hitT = head ? .22 : .1; $('cross').classList.add(head ? 'head' : 'hit'); sfx(head ? 1500 : 900, head ? .09 : .04, 'square', head ? .05 : .025); }
+  if (S.online && o === B) { net.dealt += dmg; return; }                // their page takes it off their own health
+  o.hp -= dmg;
+  if (o === A) { $('hurt').style.opacity = String(clamp(.35 + dmg / 40, 0, .9)); S.shake = Math.min(.25, S.shake + dmg / 150); sfx(110, .12, 'sawtooth', .05, .6); }
+  if (o.hp > 0) return;
+  o.hp = 0; burstFx(o.x, o.y + o.h / 2, o.z, 2.6, o.team ? 0x8a5aa8 : 0xe9e0c8); sfx(140, .3, 'sawtooth', .05, .4);
+  if (o.minion) scene.remove(o.mesh); else endDuel(o === A ? B : A);
+}
+function areaHurt(x, y, z, radius, dmg, kb, team) {
+  for (const o of foesOf(team)) {
+    const d = Math.hypot(o.x - x, o.z - z); if (d > radius + o.r || Math.abs(o.y + o.h / 2 - y) > radius + o.h / 2) continue;
+    if (kb) { const n = d || 1; knock(o, (o.x - x) / n * kb, (o.z - z) / n * kb, 5, team); }
+    hurt(o, dmg, team, x, z);
+  }
+}
+
+/* ================= projectiles ================= */
+const shotMat = [new THREE.MeshBasicMaterial({ color: 0xffe9a8 }), new THREE.MeshBasicMaterial({ color: 0xff5a4a })];
+function shoot(F, x, y, z, d, o) {
+  let mesh = o.mesh;
+  if (!mesh) { mesh = new THREE.Mesh(GEO.sph, shotMat[F.team]); const s = o.size || .16; mesh.scale.set(s, s, s); scene.add(mesh); }
+  mesh.position.set(x, y, z);
+  shots.push({ team: F.team, owner: F, x, y, z, vx: d.x * o.speed, vy: d.y * o.speed, vz: d.z * o.speed, speed: o.speed, dmg: o.dmg, splash: o.splash || 0, drop: o.drop || 0,
+    rad: o.rad || .1, life: o.life || 4, mesh, guided: !!o.guided, thrown: !!o.thrown, knock: o.knock || 0, head: typeof o.head === 'number' ? o.head : 1 });
+}
+function updateShots(dt) {
+  for (const s of shots) {
+    s.life -= dt;
+    if (s.guided && s.owner.hp > 0) {      // steer toward where the owner is looking
+      const a = aim(s.owner), k = Math.min(1, (s.owner.isBot ? 1.6 : 7) * dt), sp = s.speed;
+      let vx = s.vx / sp + (a.x - s.vx / sp) * k, vy = s.vy / sp + (a.y - s.vy / sp) * k, vz = s.vz / sp + (a.z - s.vz / sp) * k; const l = Math.hypot(vx, vy, vz) || 1;
+      s.vx = vx / l * sp; s.vy = vy / l * sp; s.vz = vz / l * sp;
+    }
+    const steps = Math.max(1, Math.ceil(Math.hypot(s.vx, s.vy, s.vz) * dt / .8)), d = dt / steps;
+    let dead = s.life <= 0, direct = null;
+    for (let k = 0; k < steps && !dead; k++) {
+      s.vy -= s.drop * d; s.x += s.vx * d; s.y += s.vy * d; s.z += s.vz * d;
+      dead = s.y <= 0 || s.y > 40 || Math.abs(s.x) > ROOM + 1 || Math.abs(s.z) > ROOM + 1;
+      if (!dead) for (const c of cyl) if (s.y < c.h && Math.hypot(s.x - c.x, s.z - c.z) < c.r + s.rad) { dead = true; break; }
+      if (dead) break;
+      for (const o of foesOf(s.team)) if (Math.hypot(s.x - o.x, s.z - o.z) < o.r + s.rad + .2 && s.y > o.y - .2 - s.rad && s.y < o.y + o.h + .2 + s.rad) { dead = true; direct = o; break; }
+    }
+    if (dead) {
+      if (s.splash) { burstFx(s.x, Math.max(.4, s.y), s.z, s.splash, s.team ? 0xff5a4a : 0xffc36a); sfx(90, .3, 'sawtooth', .06, .5); areaHurt(s.x, s.y, s.z, s.splash, s.dmg, s.knock || 10, s.team); }
+      else if (direct) { const hd = s.head > 1 && s.y > direct.y + direct.h * HEAD; hurt(direct, s.dmg * (hd ? s.head : 1), s.team, s.owner.x, s.owner.z, hd); }
+      s.life = -1; if (s.thrown) s.mesh.visible = false; else scene.remove(s.mesh);
+    } else { s.mesh.position.set(s.x, s.thrown ? s.y - 1.5 : s.y, s.z); if (s.thrown) s.mesh.rotation.x += dt * 9; }
+  }
+  shots = shots.filter(s => s.life > 0);
+}
+
+/* ================= weapons ================= */
+function fire(F) {
+  const w = F.K.weapon, d = aim(F), ex = F.x, ey = F.y + F.eye, ez = F.z, mz = muzzle(F, d);
+  F.fire = w.rate; F.kick = 1; if (F === A) net.fireN++;
+  if (F.bomb) {                                          // a readied bomb replaces the next shot; its cooldown starts on the throw
+    F.bomb = false; F.cds[1] = F.K.ab[1].cd; F.fire = .5;
+    const l = Math.hypot(d.x, d.y + .28, d.z);
+    shoot(F, mz.x, mz.y, mz.z, { x: d.x / l, y: (d.y + .28) / l, z: d.z / l }, { speed: 30, dmg: 60, splash: 6, drop: 22, size: .4, rad: .3 }); sfx(200, .2, 'square', .05, .6);
+    return;
+  }
+  if (w.kind === 'hit') {
+    const sp = F.K.scope && F.scoped ? 0 : w.spread;
+    rayOwner = F;
+    for (let i = 0; i < w.pellets; i++) {
+      let x = d.x + rand(-sp, sp), y = d.y + rand(-sp, sp) * .7, z = d.z + rand(-sp, sp); const l = Math.hypot(x, y, z); x /= l; y /= l; z /= l;
+      const r = castRay(ex, ey, ez, x, y, z, w.range, F.team);
+      if (r.hit) {
+        let dmg = w.dmg;
+        if (w.falloff) dmg *= clamp(1 - (r.end - w.falloff[0]) / (w.falloff[1] - w.falloff[0]), w.falloff[2], 1);
+        if (r.head && w.head) dmg = w.head === 'kill' ? (F.scoped ? r.hit.maxHp : dmg * 2) : dmg * w.head;
+        hurt(r.hit, dmg, F.team, F.x, F.z, r.head && !!w.head);
+      }
+      beamFx(mz.x, mz.y, mz.z, ex + x * r.end, ey + y * r.end, ez + z * r.end, F.team ? 0xff8a7a : 0xffe9a8, w.dmg > 30 ? .2 : .08, w.dmg > 30 ? .09 : .03);
+    }
+    rayOwner = null;
+    sfx(w.dmg > 30 ? 160 : w.pellets > 1 ? 180 : 420, w.dmg > 30 ? .22 : .08, 'sawtooth', .05, .4);
+  } else if (w.kind === 'proj') {
+    const ch = w.charge ? (F.charge > 0 ? F.charge : .7) : 1; F.charge = 0;     // a longer draw flies faster, further and hits harder
+    const o = w.charge ? { ...w, speed: 35 + 60 * ch, dmg: 18 + 42 * ch } : w;
+    const far = Math.min(120, worldDist(ex, ey, ez, d.x, d.y, d.z)), tx = ex + d.x * far - mz.x, ty = ey + d.y * far - mz.y, tz = ez + d.z * far - mz.z, l = Math.hypot(tx, ty, tz) || 1;
+    shoot(F, mz.x, mz.y, mz.z, { x: tx / l, y: ty / l + .02, z: tz / l }, o); sfx(360 + 300 * ch, .1, 'triangle', .05, .5);
+  } else {
+    const fX = -Math.sin(F.yaw), fZ = -Math.cos(F.yaw);
+    for (const o of foesOf(F.team)) {
+      const dx = o.x - F.x, dz = o.z - F.z, dist = Math.hypot(dx, dz) || .01;
+      if (dist > w.range + o.r || (dx * fX + dz * fZ) / dist < .35 || Math.abs(o.y - F.y) > 4.5) continue;
+      knock(o, dx / dist * 10, dz / dist * 10, 0, F.team);
+      hurt(o, w.dmg, F.team, F.x, F.z);
+    }
+    beamFx(F.x + fX * 1.2 - fZ * 2.4, F.y + F.eye * .7, F.z + fZ * 1.2 + fX * 2.4, F.x + fX * 1.2 + fZ * 2.4, F.y + F.eye * .55, F.z + fZ * 1.2 - fX * 2.4, 0xece4d0, .14, .16);
+    sfx(240, .12, 'sawtooth', .05, .5);
+  }
+}
+
+/* ================= abilities: [Shift, E] for each class ================= */
+function dashFwd(F, speed, time) { F.dvx = -Math.sin(F.yaw) * speed; F.dvz = -Math.cos(F.yaw) * speed; F.dashT = time; F.dashId = (F.dashId || 0) + 1; }
+const ABIL = {
+  p: [
+    F => { F.sprint = !F.sprint; sfx(F.sprint ? 500 : 300, .15, 'triangle', .05, 1.6); return true; },
+    F => {
+      const m = { minion: true, team: F.team, x: F.x + Math.cos(F.yaw) * 2.4, y: 0, z: F.z - Math.sin(F.yaw) * 2.4, r: .8, h: TALL.p, eye: 1.7, hp: 40, maxHp: 40, yaw: F.yaw, pitch: 0, cd: .6, life: 20, kvx: 0, kvz: 0, vy: 0, isBot: true, owner: F };
+      pushOut(m, m.r); m.mesh = makePiece('pawn', F.team ? matBlack() : matWhite()); m.mesh.position.set(m.x, 0, m.z); scene.add(m.mesh);
+      minions.push(m); ringFx(m.x, 0, m.z, 2.5, 0xe9e0c8); sfx(300, .3, 'triangle', .05, 1.5);
+      F.lock[1] = true; return 'hold';                   // the cooldown only starts once this pawn is gone
+    }
+  ],
+  n: [
+    F => { dashFwd(F, 32, .5); F.trample = true; sfx(90, .45, 'sawtooth', .07, 1.8); return true; },
+    F => { const d = aim(F), mz = muzzle(F, d); shoot(F, mz.x, mz.y, mz.z, d, { speed: 42, dmg: 55, size: .22, guided: true, life: 5 }); sfx(700, .3, 'sine', .05, 1.6); return true; }
+  ],
+  b: [
+    F => { if (!F.ground && !(S.online && F === B)) return false; F.vy = 15; F.ground = false; F.glide = 15; sfx(400, .35, 'sine', .05, 2); return true; },
+    F => { F.bomb = !F.bomb; sfx(F.bomb ? 520 : 260, .1, 'square', .04); return 'hold'; }
+  ],
+  r: [
+    F => {
+      const d = aim(F), ey = F.y + F.eye, t = worldDist(F.x, ey, F.z, d.x, d.y, d.z);
+      if (t > 55 || t < 3) return false;
+      F.grapple = { x: F.x + d.x * t, y: Math.max(0, ey + d.y * t - F.eye * .5), z: F.z + d.z * t, t: 1.6 }; sfx(800, .2, 'square', .04, .5); return true;
+    },
+    F => {
+      const fX = -Math.sin(F.yaw), fZ = -Math.cos(F.yaw), cx = F.x + fX * 5.5, cz = F.z + fZ * 5.5, parts = [];
+      for (let i = -1.5; i <= 1.5; i++) { const c = { x: cx - fZ * i * 1.7, z: cz + fX * i * 1.7, r: .95, h: 5.5 }; parts.push(c); cyl.push(c); }
+      const mesh = new THREE.Mesh(GEO.box, new THREE.MeshLambertMaterial({ color: 0x8b93a8 })); mesh.scale.set(7, 5.5, 1.3); mesh.position.set(cx, 2.75, cz); mesh.rotation.y = F.yaw; scene.add(mesh);
+      walls.push({ parts, mesh, life: 10 });
+      for (const o of [A, B, ...minions]) if (o) pushOut(o, o.r);
+      sfx(150, .3, 'square', .05, .7); return true;
+    }
+  ],
+  q: [
+    F => { F.fly = 4; if (F.ground) { F.y = .3; F.ground = false; } sfx(500, .5, 'sine', .05, 1.8); return true; },
+    F => {
+      const d = aim(F), ey = F.y + F.eye;
+      if (F.held) {                                      // second press: hurl the shield
+        const c = F.held; F.held = null; cyl = cyl.filter(q => q !== c);
+        shoot(F, F.x + d.x * 2.6, ey + d.y * 2.6 + .6, F.z + d.z * 2.6, { x: d.x, y: d.y + .06, z: d.z }, { speed: 46, dmg: 55, splash: 3.2, drop: 10, rad: 1.5, mesh: c.piece.mesh, thrown: true, knock: 18 });
+        sfx(260, .4, 'sawtooth', .06, 2); return true;
+      }
+      let best = null, bc = .8;
+      for (const c of cyl) {
+        if (!c.piece || c.holder) continue;
+        const dx = c.x - F.x, dy = c.h / 2 - ey, dz = c.z - F.z, l = Math.hypot(dx, dy, dz); if (l > 20 || l < .5) continue;
+        const cos = (dx * d.x + dy * d.y + dz * d.z) / l; if (cos > bc) { bc = cos; best = c; }
+      }
+      if (!best) return false;
+      best.holder = F; F.held = best; carryHeld(F); sfx(420, .3, 'sine', .05, 1.6); return 'hold';
+    }
+  ],
+  k: [
+    F => {
+      let ok = false;
+      for (const o of foesOf(F.team)) {
+        const dx = F.x - o.x, dz = F.z - o.z, d = Math.hypot(dx, dz); if (d > 32 || d < 2 || !canSee(F, o)) continue;
+        const pull = Math.min(34, d * 2.2); knock(o, dx / d * pull, dz / d * pull, 6, F.team);
+        beamFx(F.x, F.y + F.eye * .7, F.z, o.x, o.y + o.h * .6, o.z, 0xffe9a8, .35, .2); ok = true;
+      }
+      if (ok) sfx(330, .4, 'sine', .06, .5); return ok;
+    },
+    F => { F.pound = true; if (F.ground) { F.vy = 12; F.ground = false; } else F.vy = -30; sfx(200, .3, 'triangle', .06, 2); return true; }
+  ]
+};
+function carryHeld(F) {
+  const c = F.held; if (!c) return;
+  c.x = F.x - Math.sin(F.yaw) * 3.4; c.z = F.z - Math.cos(F.yaw) * 3.4; c.h = F.y + TALL[c.piece.t] * HIGH;
+  c.piece.mesh.position.set(c.x, F.y + .25, c.z);
+}
+function useAbility(F, i) {
+  if (S.mode !== 'duel' || F.hp <= 0 || F.cds[i] > 0 || F.lock[i]) return false;
+  const pose = { x: r2(F.x), y: r2(F.y), z: r2(F.z), w: r3(F.yaw), p: r3(F.pitch) };
+  const r = ABIL[F.t][i](F);
+  if (r) { if (r !== 'hold') F.cds[i] = F.K.ab[i].cd; if (S.online && F === A) net.ev.push({ id: ++net.evId, k: 'ab', i, ...pose, t: 2 }); return true; }
+  if (F === A) sfx(120, .08, 'square', .03); return false;
+}
+
+/* ================= fighters ================= */
+function mkFighter(piece, team, isBot) {
+  const K = KITS[piece.t];
+  return { piece, t: piece.t, team, isBot, K, x: 0, y: 0, z: 0, r: 1, h: TALL[piece.t] * SCALE, eye: TALL[piece.t] * SCALE * .82, yaw: 0, pitch: 0, vy: 0, kvx: 0, kvz: 0, ground: true,
+    hp: K.hp, maxHp: K.hp, fire: .5, cds: [0, 0], inp: { ix: 0, iz: 0, jump: false, fire: false, block: false }, blocking: false,
+    sprint: false, dashT: 0, dvx: 0, dvz: 0, trample: false, glide: 0, fly: 0, grapple: null, pound: false, kick: 0, flash: 0,
+    charge: 0, bomb: false, held: null, scoped: false, sinceHit: 9, dead: false, lock: [false, false],
+    bot: { ey: 0, ep: 0, errT: 0, strafe: 1, strafeT: 0, react: 1.1, abT: rand(1.5, 3), jump: false } };
+}
+function moveFighter(F, dt) {
+  const K = F.K, I = F.inp;
+  const manual = !!(I.block && K.block && F.dashT <= 0);
+  if (F.sprint && F.ground && (I.fire || manual)) F.sprint = false;     // attacking or blocking on the ground ends a sprint; in the air it does not
+  F.blocking = manual || (F.sprint && !I.fire);                         // sprinting keeps a frontal guard up
+  F.scoped = !!(I.block && K.scope);
+  const sp = K.speed * (F.sprint ? 1.8 : manual ? .5 : 1) * (F.scoped ? .5 : 1) * (F.glide > 0 && !F.ground ? 1.5 : 1) * (F.fly > 0 ? 1.25 : 1);
+  const l = Math.hypot(I.ix, I.iz) || 1, fX = -Math.sin(F.yaw), fZ = -Math.cos(F.yaw), rX = Math.cos(F.yaw), rZ = -Math.sin(F.yaw);
+  let vx = (fX * I.iz + rX * I.ix) / l * sp, vz = (fZ * I.iz + rZ * I.ix) / l * sp;
+  if (F.dashT > 0) {
+    vx = F.dvx; vz = F.dvz; F.dashT -= dt;
+    if (F.trample) for (const o of foesOf(F.team)) {
+      const d = Math.hypot(o.x - F.x, o.z - F.z);
+      if (o.hitBy !== F.dashId + F.team * 1e6 && d < F.r + o.r + 1.1 && Math.abs(o.y - F.y) < 4) { o.hitBy = F.dashId + F.team * 1e6; knock(o, (o.x - F.x) / (d || 1) * 24, (o.z - F.z) / (d || 1) * 24, 0, F.team); hurt(o, 32, F.team, F.x, F.z); }
+    }
+    if (F.dashT <= 0) F.trample = false;
+  }
+  if (F.grapple) {
+    const g = F.grapple, dx = g.x - F.x, dy = g.y - F.y, dz = g.z - F.z, d = Math.hypot(dx, dy, dz); g.t -= dt;
+    if (d < 2.4 || g.t <= 0) { F.grapple = null; F.vy = Math.max(F.vy * .3, 5); }
+    else { vx = dx / d * 40; vz = dz / d * 40; F.vy = dy / d * 40; beamFx(F.x, F.y + F.eye * .7, F.z, g.x, g.y + F.eye * .5, g.z, 0xc9a24a, .04, .05); }
+  }
+  F.x += (vx + F.kvx) * dt; F.z += (vz + F.kvz) * dt;
+  const damp = Math.exp(-4 * dt); F.kvx *= damp; F.kvz *= damp;
+  if (F.grapple) F.y += F.vy * dt;
+  else if (F.fly > 0) { F.vy = Math.sin(F.pitch) * sp * I.iz + (I.jump ? 9 : 0); F.y += F.vy * dt; }
+  else {
+    if (I.jump && F.ground) { F.vy = 10; F.ground = false; }
+    F.vy -= GRAV * (F.glide > 0 && F.vy < 0 ? .22 : 1) * dt; F.y += F.vy * dt;
+  }
+  if (F.y <= 0) {
+    F.y = 0; F.glide = 0;
+    if (F.pound) { F.pound = false; areaHurt(F.x, 0, F.z, 7.5, 50, 20, F.team); ringFx(F.x, 0, F.z, 7.5, 0xc9a24a); if (F === A) S.shake = .2; sfx(70, .35, 'sawtooth', .07, .5); }
+    if (F.vy < 0) F.vy = 0; F.ground = F.vy <= 0;
+  } else F.ground = false;
+  F.y = Math.min(F.y, 26);
+  pushOut(F, F.r);
+  F.fire -= dt;
+  if (K.weapon.charge && !F.bomb) { if (I.fire && F.fire <= 0) F.charge = Math.min(1, F.charge + dt / 1.1); else if (F.charge > 0) fire(F); }
+  else if (I.fire && F.fire <= 0 && !manual) fire(F);
+  carryHeld(F);
+  F.sinceHit += dt; if (F.sinceHit > 4 && F.hp > 0 && !F.dead) F.hp = Math.min(F.maxHp, F.hp + 12 * dt);   // out of the fight for 4 seconds: heal
+  F.cds[0] = Math.max(0, F.cds[0] - dt); F.cds[1] = Math.max(0, F.cds[1] - dt);
+  F.fly = Math.max(0, F.fly - dt); F.glide = Math.max(0, F.glide - dt);
+  F.kick = Math.max(0, F.kick - dt * 7); F.flash = Math.max(0, F.flash - dt);
+}
+
+/* ================= the computer's duelist ================= */
+function think(F, T, dt) {
+  const b = F.bot, K = F.K, I = F.inp, w = K.weapon;
+  const dx = T.x - F.x, dz = T.z - F.z, dist = Math.hypot(dx, dz) || .01, dy = T.y + T.h * .55 - (F.y + F.eye), see = canSee(F, T);
+  b.errT -= dt; if (b.errT <= 0) { b.errT = .35; b.ey = rand(-K.err, K.err); b.ep = rand(-K.err, K.err) * .6; }
+  let wy = Math.atan2(-dx, -dz) + b.ey, wp = Math.atan2(dy, dist) + b.ep;
+  if (w.kind === 'proj' && w.drop) wp += Math.atan(.5 * w.drop * (dist / w.speed) / w.speed);
+  const turn = wrap(wy - F.yaw); F.yaw += clamp(turn, -7 * dt, 7 * dt); F.pitch += clamp(wp - F.pitch, -5 * dt, 5 * dt);
+  b.strafeT -= dt; if (b.strafeT <= 0) { b.strafe = Math.random() < .5 ? -1 : 1; b.strafeT = rand(.6, 1.8); b.jump = Math.random() < .2; }
+  const melee = w.kind === 'melee';
+  I.iz = !see || dist > K.range * 1.15 ? 1 : (!melee && dist < K.range * .6 ? -1 : 0);
+  I.ix = b.strafe * (melee && see ? .3 : 1);
+  I.jump = (b.jump && F.ground) || (F.fly > 0 && F.y < 5); b.jump = false;
+  b.react = see ? b.react - dt : .35;
+  const reach = melee ? w.range + .5 : (w.range || 80);
+  I.fire = see && Math.abs(turn) < .14 && b.react <= 0 && dist < reach;
+  if (w.charge && F.charge >= (b.hold || .8)) { I.fire = false; b.hold = rand(.45, 1); }   // loose the arrow
+  I.block = !!K.scope && see;
+  b.abT -= dt;
+  if (b.abT <= 0 && see && b.react <= 0) {
+    b.abT = rand(1.2, 2.6);
+    if (F.t === 'p') { if (dist > 26) { if (!F.sprint) useAbility(F, 0); } else useAbility(F, 1); }
+    else if (F.t === 'n') useAbility(F, dist < 14 ? 0 : 1);
+    else if (F.t === 'b') { if (!F.bomb) useAbility(F, dist > 16 ? 0 : 1); }
+    else if (F.t === 'r') { if (dist < 12) useAbility(F, 1); }
+    else if (F.t === 'q') { if (!useAbility(F, 1) && F.hp < F.maxHp * .5) useAbility(F, 0); }
+    else useAbility(F, dist > 7 ? 0 : 1);
+  }
+}
+function updateMinions(dt) {
+  for (const m of minions) {
+    if (m.hp <= 0) continue;
+    m.life -= dt; if (m.life <= 0) { m.hp = 0; scene.remove(m.mesh); continue; }
+    m.sinceHit = 0;
+    m.x += (-Math.sin(m.yaw) * 4 + m.kvx) * dt; m.z += (-Math.cos(m.yaw) * 4 + m.kvz) * dt; const damp = Math.exp(-4 * dt); m.kvx *= damp; m.kvz *= damp;
+    pushOut(m, m.r);
+    m.cd -= dt;
+    if (m.cd <= 0) {
+      m.cd = 1.1;
+      let t = null, bd_ = 60; for (const o of foesOf(m.team)) { const d = Math.hypot(o.x - m.x, o.z - m.z); if (d < bd_ && canSee(m, o)) { bd_ = d; t = o; } }
+      if (t) { const dx = t.x - m.x, dy = t.y + t.h * .5 - 1.5, dz = t.z - m.z, l = Math.hypot(dx, dy, dz) || 1; shoot(m, m.x + dx / l, 1.5, m.z + dz / l, { x: dx / l, y: dy / l, z: dz / l }, { speed: 45, dmg: 10 }); }
+    }
+    m.mesh.position.set(m.x, 0, m.z); m.mesh.rotation.y = m.yaw + Math.PI;
+  }
+  for (const m of minions) if (m.hp <= 0 && m.owner && m.owner.lock[1]) { m.owner.lock[1] = false; m.owner.cds[1] = m.owner.K.ab[1].cd; }
+  minions = minions.filter(m => m.hp > 0);
+}
+
+/* ================= duel flow ================= */
+function showIntro(m) {
+  const a = bd[m.from], v = bd[m.cap], mine = a.c === S.me ? a : v, K = KITS[mine.t];
+  S.mode = 'intro';
+  $('introTitle').textContent = NAME[a.t] + ' takes ' + NAME[v.t] + ' on ' + sqName(m.to);
+  $('introRole').textContent = a.c === S.me ? 'You attack with your ' + NAME[a.t] + '. Win and the square is yours.' : (S.online ? 'Your opponent attacks.' : 'Black attacks.') + ' Defend your ' + NAME[v.t] + ' to keep the square.';
+  const ul = $('kit'); ul.textContent = '';
+  const rows = [['Left click', K.weapon.name, K.weapon.charge ? 'Hold to draw, release to shoot.' : '']]; if (altRow(K)) rows.push(altRow(K));
+  rows.push(['Shift', K.ab[0].name, K.ab[0].desc], ['E', K.ab[1].name, K.ab[1].desc]);
+  for (const [k, n, d] of rows) { const li = document.createElement('li'), kb = document.createElement('kbd'), b = document.createElement('b'); kb.textContent = k; b.textContent = n + (d ? '. ' : ''); li.append(kb, b, d); ul.append(li); }
+  $('fight').textContent = S.online ? 'Enter the duel' : 'Fight';
+  $('side').classList.add('hidden'); $('intro').classList.remove('hidden'); drawBoardUi();
+}
+function beginDuel() {
+  const m = S.pending, a = bd[m.from], v = bd[m.cap];
+  cyl = []; minions = []; shots = []; walls = [];
+  for (const p of bd) if (p && p !== a && p !== v) cyl.push({ x: sqX(p.sq), z: sqZ(p.sq), r: COVER_R, h: TALL[p.t] * HIGH, piece: p });
+  const wp = a.c === S.me ? a : v, bp = wp === a ? v : a;   // wp is my piece, bp the enemy's
+  A = mkFighter(wp, 0, false); B = mkFighter(bp, 1, !S.online);
+  Object.assign(net, { dealt: 0, seenDl: 0, fireN: 0, seenFn: 0, ev: [], evId: 0, seenEv: 0, oppReady: !S.online, waitShown: false });
+  // start from the two squares involved, pushed apart so nobody spawns point blank
+  let ax = sqX(m.from), az = sqZ(m.from), dx = sqX(m.to) - ax, dz = sqZ(m.to) - az; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
+  const mx = clamp((ax + sqX(m.to)) / 2, -18, 18), mz_ = clamp((az + sqZ(m.to)) / 2, -18, 18), half = Math.max(d / 2, 11);
+  const att = a.c === S.me ? A : B, def = att === A ? B : A;
+  att.x = mx - dx * half; att.z = mz_ - dz * half; def.x = mx + dx * half; def.z = mz_ + dz * half;
+  for (const F of [A, B]) { pushOut(F, F.r + .2); const o = F === A ? B : A; F.yaw = Math.atan2(-(o.x - F.x), -(o.z - F.z)); }
+  wp.mesh.visible = false; bp.tag.visible = true; bp.mesh.scale.set(1.5, SCALE, 1.5);   // duelists stay slimmer than the cover around them
+  setView(A);
+  $('foeName').textContent = (bp.c === 'b' ? 'Black ' : 'White ') + NAME[B.t]; $('intro').classList.add('hidden'); $('hud').classList.remove('hidden');
+  S.mode = 'duel'; S.paused = false; firing = false; blocking = false;
+  banner('Fight', NAME[A.t] + ' against ' + NAME[B.t]);
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { AC = null; } }
+  if (!S.autoplay) lockMouse();
+}
+function endDuel(winner) {
+  if (S.mode !== 'duel') return;
+  S.mode = 'after'; S.afterT = 1.9; S.winner = winner; firing = false;
+  if (S.role === 'h') S.verdict = winner === A ? S.me : 'b';
+  if (winner === A) { S.won++; B.piece.mesh.visible = false; banner('Duel won', 'Your ' + NAME[A.t] + ' holds ' + sqName(S.pending.to)); sfx(520, .6, 'triangle', .07, 1.6); }
+  else { S.lost++; banner('Duel lost', 'The enemy ' + NAME[B.t] + ' holds the square'); sfx(160, .7, 'triangle', .07, .5); }
+}
+function cleanupDuel() {
+  for (const m of minions) scene.remove(m.mesh); for (const s of shots) if (!s.thrown) scene.remove(s.mesh); for (const w of walls) scene.remove(w.mesh);
+  minions = []; shots = []; walls = []; cyl = [];
+  for (const p of bd) if (p) { p.mesh.visible = true; p.tag.visible = false; p.mesh.scale.set(WIDE, HIGH, WIDE); p.mesh.position.set(p.px, 0, p.pz); p.mesh.rotation.set(0, p.c === 'b' ? Math.PI : 0, 0); p.mat.emissive.setHex(p.c === 'b' ? 0x1c0a18 : 0x000000); }
+  try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) {}
+  A = B = null; S.paused = false; firing = false; blocking = false;
+  for (const id of ['hud', 'pause', 'intro']) $(id).classList.add('hidden');
+  $('scope').classList.remove('on');
+  if (viewModel) viewModel.visible = false;
+}
+function finishDuel() {
+  const m = S.pending, won = S.winner.piece === bd[m.from];
+  cleanupDuel(); S.pending = null; S.mode = 'board'; $('side').classList.remove('hidden');
+  if (S.role === 'g') return drawBoardUi();              // the host's next update carries the result
+  resolveCapture(m, won);
+}
+/* the opponent's duelist, driven by what their page reports */
+function netDuel(dt) {
+  B.flash = Math.max(0, B.flash - dt);
+  for (const e of net.ev) e.t -= dt; net.ev = net.ev.filter(e => e.t > 0);
+  const o = net.opp && net.opp.d;
+  if (!o || o.did !== S.did || !o.rdy) {
+    net.oppReady = false;
+    if (!net.waitShown) { net.waitShown = true; banner('Waiting for your opponent', 'They have not entered the duel yet'); } else bannerT = 1;
+    return;
+  }
+  if (!net.oppReady) { net.oppReady = true; banner('Fight', NAME[A.t] + ' against ' + NAME[B.t]); }
+  const k = Math.min(1, dt * 16);
+  B.x += (clamp(num(o.x, B.x), -ROOM, ROOM) - B.x) * k; B.y += (clamp(num(o.y, B.y), 0, 26) - B.y) * k; B.z += (clamp(num(o.z, B.z), -ROOM, ROOM) - B.z) * k;
+  B.yaw += wrap(num(o.w, B.yaw) - B.yaw) * k; B.pitch = clamp(num(o.p, 0), -1.5, 1.5); B.blocking = !!o.b && !!B.K.block;
+  if (Array.isArray(o.ev)) for (const e of o.ev) {
+    if (!e || !(e.id > net.seenEv)) continue; net.seenEv = e.id;
+    if (e.k === 'kn') { A.kvx += clamp(num(e.x, 0), -40, 40); A.kvz += clamp(num(e.z, 0), -40, 40); const y = clamp(num(e.y, 0), 0, 12); if (y) { A.vy = Math.max(A.vy, y); A.ground = false; } }
+    else if (e.k === 'ab' && (e.i === 0 || e.i === 1)) { B.x = clamp(num(e.x, B.x), -ROOM, ROOM); B.y = clamp(num(e.y, B.y), 0, 26); B.z = clamp(num(e.z, B.z), -ROOM, ROOM); B.yaw = num(e.w, B.yaw); B.pitch = clamp(num(e.p, 0), -1.5, 1.5); ABIL[B.t][e.i](B); }
+  }
+  if (num(o.fn, 0) > net.seenFn) { net.seenFn = o.fn; fire(B); }
+  carryHeld(B);
+  const dl = Math.max(0, num(o.dl, 0));
+  if (dl > net.seenDl) {                                 // damage they scored on me since the last update
+    const dmg = Math.min(dl - net.seenDl, A.maxHp); net.seenDl = dl;
+    if (!A.dead) {
+      A.hp -= dmg; A.sinceHit = 0;
+      $('hurt').style.opacity = String(clamp(.35 + dmg / 40, 0, .9)); S.shake = Math.min(.25, S.shake + dmg / 150); sfx(110, .12, 'sawtooth', .05, .6);
+      if (A.hp <= 0) { A.hp = 0; A.dead = true; }
+    }
+  }
+  B.hp = clamp(num(o.hp, B.hp), 0, B.maxHp);
+  if (S.role === 'h') { if (A.dead) endDuel(B); else if (o.dead) endDuel(A); }
+}
+function updateDuel(dt) {
+  if (S.autoplay) think(A, B, dt);
+  else { const I = A.inp; I.ix = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0); I.iz = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0); I.jump = !!keys.Space; I.fire = firing; I.block = blocking;
+    if (keys.ArrowLeft) A.yaw += 2.2 * dt; if (keys.ArrowRight) A.yaw -= 2.2 * dt;
+    if (keys.ArrowUp) A.pitch = clamp(A.pitch + 1.6 * dt, -1.45, 1.45); if (keys.ArrowDown) A.pitch = clamp(A.pitch - 1.6 * dt, -1.45, 1.45); }
+  if (S.online) netDuel(dt); else think(B, A, dt);
+  if (S.mode === 'duel') moveFighter(A, dt); if (S.mode === 'duel' && !S.online) moveFighter(B, dt);
+  if (S.mode === 'duel') updateMinions(dt);
+  if (S.mode === 'duel') updateShots(dt);
+  for (const w of walls) { w.life -= dt; if (w.life <= 0) { scene.remove(w.mesh); cyl = cyl.filter(c => !w.parts.includes(c)); } }
+  walls = walls.filter(w => w.life > 0);
+}
+function gameOver(winner) {
+  S.mode = 'end'; if (S.role !== 'g') { S.over = winner; S.seq++; } drawBoardUi();
+  const won = winner === S.me;
+  $('endTitle').textContent = won ? 'Victory' : 'Defeat';
+  $('endText').textContent = won ? 'The enemy King fell in a duel. The board is yours.' : 'Your King lost his duel. The match is over.';
+  const dl = $('endStats'); dl.textContent = '';
+  for (const [k, v] of [['Moves played', Math.ceil(S.ply / 2) + 1], ['Duels won', S.won], ['Duels lost', S.lost]]) { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = String(v); dl.append(dt, dd); }
+  $('again').classList.toggle('hidden', S.role === 'g'); $('again').textContent = S.role === 'h' ? 'Rematch' : 'Play again';
+  $('side').classList.add('hidden'); $('end').classList.remove('hidden');
+}
+function startMatch(online) {
+  online = online === true;
+  if (!online) { leaveRoom(); S.role = null; S.me = 'w'; }
+  if (A) cleanupDuel();
+  resetBoard();
+  Object.assign(S, { mode: 'board', online, paused: false, turn: 'w', ep: null, sel: -1, legal: [], last: null, aiT: .9, pending: null, winner: null, verdict: null, over: null,
+    ply: 0, won: 0, lost: 0, log: [], logBase: 0, seq: (S.seq || 0) + 1 });
+  for (const id of ['menu', 'end', 'intro', 'pause', 'hud', 'lobby']) $(id).classList.add('hidden'); $('side').classList.remove('hidden');
+  $('netLine').classList.toggle('hidden', !online);
+  drawMoves(); drawBoardUi();
+}
+function toMenu() {
+  if (A) cleanupDuel();
+  leaveRoom(); S.online = false; S.role = null; S.me = 'w'; S.pending = null;
+  S.mode = 'menu'; resetBoard(); S.sel = -1; S.legal = []; S.last = null; drawBoardUi();
+  for (const id of ['end', 'side', 'hud', 'intro', 'lobby', 'pause']) $(id).classList.add('hidden'); $('menu').classList.remove('hidden');
+}
+
+/* ================= online play ================= */
+function leaveRoom() {
+  if (net.room) { try { const p = net.room.leave(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+  Object.assign(net, { room: null, opp: null, oppPeer: null, started: false, req: null, sent: {}, full: false }); S.code = '';
+}
+function push(key, val) {
+  const str = JSON.stringify(val); if (net.sent[key] === str) return; net.sent[key] = str;
+  try { const p = net.room.presence({ [key]: val }); if (p && p.catch) p.catch(() => { net.sent[key] = null; }); } catch (e) { net.sent[key] = null; }
+}
+function snapshot() {
+  let b = '', mv = '';
+  for (const p of bd) { b += p ? (p.c === 'w' ? p.t.toUpperCase() : p.t) : '.'; mv += p && p.moved ? '1' : '0'; }
+  const base = Math.max(0, (S.log.length - 14) & ~1), pm = S.pending;
+  return { g: net.oppPeer, seq: S.seq, b, mv, turn: S.turn, ep: S.ep ? [S.ep.sq, S.ep.pawn] : null, last: S.last, lb: base, log: S.log.slice(base).map(l => [l.text, l.lost ? 1 : 0]), ply: S.ply,
+    phase: S.mode === 'end' ? 'end' : (S.mode === 'board' ? 'board' : 'duel'), pm: pm ? { from: pm.from, to: pm.to, cap: pm.cap, ep: !!pm.ep, promo: !!pm.promo } : null, did: S.did, vd: S.verdict, over: S.over };
+}
+const okSq = v => Number.isInteger(v) && v >= 0 && v < 64;
+function applySnap(c) {
+  if (typeof c.b !== 'string' || c.b.length !== 64) return;
+  if (A) cleanupDuel();
+  const list = [];
+  for (let i = 0; i < 64; i++) { const ch = c.b[i], t = ch.toLowerCase(); if (KVAL[t]) list.push(sqName(i) + ':' + (ch === t ? 'b' : 'w') + t); }
+  setBoard(list); for (let i = 0; i < 64; i++) if (bd[i]) bd[i].moved = String(c.mv || '')[i] === '1';
+  if (!net.started || (c.ply === 0 && c.phase === 'board')) { S.won = 0; S.lost = 0; }
+  net.started = true; net.req = null;
+  Object.assign(S, { online: true, seq: c.seq, turn: c.turn === 'b' ? 'b' : 'w', sel: -1, legal: [], pending: null, ply: num(c.ply, 0), did: num(c.did, 0), logBase: num(c.lb, 0),
+    ep: Array.isArray(c.ep) && okSq(c.ep[0]) && okSq(c.ep[1]) ? { sq: c.ep[0], pawn: c.ep[1] } : null,
+    last: Array.isArray(c.last) && okSq(c.last[0]) && okSq(c.last[1]) ? [c.last[0], c.last[1]] : null,
+    log: Array.isArray(c.log) ? c.log.slice(0, 16).map(l => ({ text: String(l && l[0]).slice(0, 12), lost: !!(l && l[1]) })) : [] });
+  for (const id of ['menu', 'end', 'intro', 'pause', 'hud', 'lobby']) $(id).classList.add('hidden');
+  $('netLine').classList.remove('hidden');
+  const pm = c.pm;
+  if (c.phase === 'duel' && pm && okSq(pm.from) && okSq(pm.to) && okSq(pm.cap) && bd[pm.from] && bd[pm.cap] && bd[pm.from].c !== bd[pm.cap].c) { S.pending = { from: pm.from, to: pm.to, cap: pm.cap, ep: !!pm.ep, promo: !!pm.promo }; showIntro(S.pending); }
+  else if (c.phase === 'end') gameOver(c.over === 'b' ? 'b' : 'w');
+  else { S.mode = 'board'; $('side').classList.remove('hidden'); }
+  drawMoves(); drawBoardUi();
+}
+function lobbyText(t) { $('lobbyText').textContent = t; }
+function openRoom(code, role) {
+  if (!net.lobby) return;
+  leaveRoom(); S.role = role; S.me = role === 'h' ? 'w' : 'b'; S.code = code;
+  $('lobbyTitle').textContent = role === 'h' ? 'Match code' : 'Joining match'; $('lobbyCode').textContent = code.toUpperCase();
+  $('copy').classList.toggle('hidden', role !== 'h'); $('copy').textContent = 'Copy code';
+  lobbyText('Connecting.'); $('lobby').classList.remove('hidden');
+  let j; try { j = net.lobby.join('gambit-' + code); } catch (e) { j = Promise.reject(e); }
+  Promise.resolve(j).then(r => {
+    if (S.code !== code || S.role !== role) { try { r.leave(); } catch (e) {} return; }
+    net.room = r; net.sent = {}; push('role', role);
+    lobbyText(role === 'h' ? 'Give this code to your friend. They open this page, type it in and press Join. The match starts as soon as they arrive. You play White.' : 'Looking for the host of this match. You will play Black.');
+  }).catch(() => { if (S.code === code) lobbyText('Could not open the match. Online play may not be available in this view. Cancel and try again.'); });
+}
+function newCode() { const abc = 'abcdefghjkmnpqrstuvwxyz23456789'; let c = ''; for (let i = 0; i < 5; i++) c += abc[Math.floor(Math.random() * abc.length)]; return c; }
+function netTick(dt) {
+  if (!net.room) return;
+  let peers = []; try { peers = net.room.peers() || []; } catch (e) {}
+  let me = null, opp = null;
+  for (const p of peers) {
+    if (p.sameTab) { me = p; continue; }
+    const pr = p.presence || {};
+    if (S.role === 'h' ? (net.oppPeer ? p.peer === net.oppPeer : pr.role === 'g') : pr.role === 'h') opp = opp || p;
+  }
+  net.opp = opp ? opp.presence : null;
+  if (S.role === 'h') {
+    if (!net.started && opp) { net.oppPeer = opp.peer; net.started = true; startMatch(true); }
+  } else if (net.opp && net.opp.c && typeof net.opp.c.seq === 'number') {
+    const c = net.opp.c;
+    if (c.g && me && c.g !== me.peer) { if (!net.full) { net.full = true; lobbyText('That match already has two players. Cancel and ask for a new code.'); } }
+    else {
+      if (S.mode === 'duel' && A && c.did === S.did && (c.vd === 'w' || c.vd === 'b')) endDuel(c.vd === S.me ? A : B);
+      if (!net.started || c.seq !== S.seq) applySnap(c);
+    }
+  }
+  if (net.started) $('netLine').textContent = 'Match ' + S.code.toUpperCase() + ' \u00B7 ' + (opp ? 'opponent connected' : 'opponent has left or lost connection');
+  net.sendT -= dt; if (net.sendT > 0) return; net.sendT = .05;
+  net.resend = (net.resend || 0) + 1; if (net.resend >= 20) { net.resend = 0; net.sent = {}; push('role', S.role); }   // re-assert everything once a second
+  const inD = (S.mode === 'duel' || S.mode === 'after') && A;
+  push('d', inD ? { did: S.did, rdy: 1, x: r2(A.x), y: r2(A.y), z: r2(A.z), w: r3(A.yaw), p: r3(A.pitch), b: A.blocking ? 1 : 0, hp: Math.round(A.hp * 10) / 10, dead: A.dead ? 1 : 0, dl: Math.round(net.dealt * 10) / 10, fn: net.fireN, ev: net.ev.map(({ t, ...e }) => e) } : null);
+  if (S.role === 'h') { if (net.started) push('c', snapshot()); } else push('req', net.req);
+}
+function tick(dt) {
+  netTick(dt);
+  if (S.mode === 'board') {
+    const guest = S.online && S.role === 'g';
+    if (guest) { if (S.autoplay && S.turn === S.me && !net.req) { const m = chooseMove(S.me); if (m) sendReq(m); } }
+    else if (S.online && S.turn !== S.me) {             // host: wait for the guest's move request and check it against the rules
+      const q = net.opp && net.opp.req, ms = genMoves(bd, S.turn, S.ep);
+      if (!ms.length) { logMove('pass'); endTurn(null); }
+      else if (q && q.seq === S.seq) { const m = ms.find(x => x.from === q.from && x.to === q.to); if (m) doMove(m); }
+    } else if (S.autoplay || (!S.online && S.turn === 'b')) {
+      S.aiT -= dt;
+      if (S.aiT <= 0) { S.aiT = .9; const m = chooseMove(S.turn); if (m) doMove(m); else { logMove('pass'); endTurn(null); } }
+    } else if (!genMoves(bd, S.me, S.ep).length) { logMove('pass'); endTurn(null); }
+  } else if (S.mode === 'intro') { if (S.autoplay) beginDuel(); }
+  else if (S.mode === 'duel') { if (!S.paused) updateDuel(dt); }
+  else if (S.mode === 'after') { S.afterT -= dt; if (S.afterT <= 0) finishDuel(); }
+}
+
+/* ================= HUD ================= */
+let bannerT = 0, hitT = 0, viewModel = null;
+function banner(big, small) {
+  const b = $('banner'); b.textContent = big;
+  if (small) { const s = document.createElement('small'); s.textContent = small; b.append(s); }
+  b.classList.add('show'); bannerT = 2;
+}
+function setView(F) {
+  if (viewModel) camera.remove(viewModel);
+  viewModel = makePiece(MODEL[F.t], S.me === 'b' ? matBlack() : matWhite()); viewModel.scale.set(.16, .16, .16); camera.add(viewModel);
+  $('whoName').textContent = GLYPH[F.t] + ' ' + NAME[F.t]; $('whoWeapon').textContent = F.K.weapon.name + (F.K.block ? ' · right click to block' : F.K.scope ? ' · right click to scope' : '');
+  const ch = $('chips'); ch.textContent = '';
+  F.K.ab.forEach((a, i) => {
+    const c = document.createElement('div'); c.className = 'chip'; c.id = 'chip' + i;
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = i ? 'E' : 'Shift';
+    const t = document.createElement('span'); t.className = 't'; t.id = 'chipT' + i;
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = a.name;
+    c.append(k, t, n); ch.append(c);
+  });
+}
+function updateHud(dt) {
+  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) $('banner').classList.remove('show'); }
+  if (!A || !B) return;
+  const ratio = A.hp / A.maxHp;
+  $('hpBar').firstElementChild.style.width = (ratio * 100).toFixed(1) + '%'; $('hpBar').classList.toggle('low', ratio < .3);
+  $('hpText').textContent = Math.ceil(A.hp) + ' / ' + A.maxHp + (A.sprint ? '   Sprinting, guard up' : A.blocking ? '   Blocking' : '') + (A.fly > 0 ? '   Flying ' + A.fly.toFixed(1) : '') + (A.glide > 0 && !A.ground ? '   Gliding ' + A.glide.toFixed(0) : '')
+    + (A.charge > 0 ? '   Draw ' + Math.round(A.charge * 100) + '%' : '') + (A.bomb ? '   Bomb ready, click to throw' : '') + (A.held ? '   Shield up, E to throw' : '')
+    + (A.sinceHit > 4 && A.hp < A.maxHp && !A.dead ? '   Regenerating' : '');
+  $('scope').classList.toggle('on', !!A.scoped);
+  $('foeBar').firstElementChild.style.width = (B.hp / B.maxHp * 100).toFixed(1) + '%';
+  for (let i = 0; i < 2; i++) { const c = $('chip' + i); if (!c) continue; const cool = A.cds[i] > 0 || A.lock[i]; c.classList.toggle('cool', cool); $('chipT' + i).textContent = A.lock[i] ? 'out' : A.cds[i] > .45 ? A.cds[i].toFixed(1) : ''; }
+  const h = $('hurt'), o = parseFloat(h.style.opacity || '0'); if (o > 0) h.style.opacity = String(Math.max(0, o - dt * 1.8));
+  $('shield').style.opacity = A.blocking ? '.5' : '0';
+  if (hitT > 0) { hitT -= dt; if (hitT <= 0) $('cross').classList.remove('hit', 'head'); }
+}
+
+/* ================= render ================= */
+function render(dt, now) {
+  for (const f of fx) { f.life -= dt; if (f.tick) f.tick(f.mesh, 1 - Math.max(0, f.life) / f.max); if (f.life <= 0) scene.remove(f.mesh); }
+  fx = fx.filter(f => f.life > 0);
+  const inDuel = (S.mode === 'duel' || S.mode === 'after') && A && B;
+  if (inDuel) {
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches === true;
+    const sh = calm ? 0 : S.shake; S.shake = Math.max(0, S.shake - dt * .8);
+    camera.fov = A.scoped ? 20 : 75; camera.updateProjectionMatrix();
+    camera.position.set(A.x + rand(-sh, sh), A.y + A.eye + rand(-sh, sh), A.z); camera.rotation.set(A.pitch, A.yaw, 0);
+    if (viewModel) { viewModel.visible = !A.scoped; viewModel.position.set(.34, -.42 + A.kick * .03, -.7 + A.kick * .09); viewModel.rotation.set(-1.25 + A.kick * .25 + (A.blocking ? .9 : 0), 0, A.blocking ? .9 : -.12); }
+    const m = B.piece.mesh; m.position.set(B.x, B.y, B.z); m.rotation.y = B.yaw + Math.PI;
+    B.piece.mat.emissive.setHex(B.flash > 0 ? 0xffffff : (B.piece.c === 'b' ? 0x1c0a18 : 0x000000));
+    B.piece.tag.scale.set(1.3 * clamp(B.hp / B.maxHp, 0, 1) + .001, .13, 1);
+  } else {
+    if (viewModel) viewModel.visible = false;
+    for (const p of bd) if (p) { const k = Math.min(1, dt * 9); p.px += (sqX(p.sq) - p.px) * k; p.pz += (sqZ(p.sq) - p.pz) * k; p.mesh.position.set(p.px, 0, p.pz); }
+    camera.fov = 50; camera.updateProjectionMatrix();
+    if (S.mode === 'menu') { const a = now * .00012; camera.position.set(Math.sin(a) * 62, 34, Math.cos(a) * 62); camera.rotation.set(0, 0, 0); camera.lookAt(0, 0, 0); }
+    else { const k = Math.max(1, 1.45 / aspect); const side = S.me === 'b' ? -1 : 1; camera.position.set(0, 66 * k, 50 * k * side); camera.rotation.set(0, 0, 0); camera.lookAt(0, 0, 3 * side); }
+  }
+  renderer.render(scene, camera);
+}
+let last = 0;
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000 || 0); last = now;
+  tick(dt); updateHud(dt); render(S.paused ? 0 : dt, now);
+  requestAnimationFrame(frame);
+}
+
+/* ================= input ================= */
+function setPaused(v) {
+  if (S.mode !== 'duel') return;
+  S.paused = v && !S.online; firing = false; blocking = false; $('pause').classList.toggle('hidden', !v);   // an online duel cannot be frozen
+  $('pause').querySelector('h2').textContent = S.online ? 'Mouse released' : 'Paused';
+  $('pauseHint').textContent = S.online && !S.drag ? 'The duel is still running. Click Resume to capture the mouse again.' : S.drag ? 'Mouse capture is not available here. Hold the left mouse button and drag to look, or use the arrow keys. Press P to pause.' : 'Click Resume to capture the mouse again.';
+}
+function lockMouse() {
+  if (S.drag) return;
+  try { if (!canvas.requestPointerLock) { S.drag = true; return; } const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => { S.drag = true; }); } catch (e) { S.drag = true; }
+}
+window.addEventListener('keydown', e => {
+  if (S.mode !== 'duel') return;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.repeat) return;
+  keys[e.code] = true;
+  if (!S.paused && A) { if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') useAbility(A, 0); if (e.code === 'KeyE') useAbility(A, 1); }
+  if (e.code === 'KeyP' || (e.code === 'Escape' && S.drag)) setPaused(!S.paused);
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; firing = false; blocking = false; });
+let dragging = false;
+const picker = new THREE.Raycaster(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), ndc = new THREE.Vector2(), hitPt = new THREE.Vector3();
+canvas.addEventListener('mousedown', e => {
+  if (S.mode !== 'duel' || S.paused) return;
+  if (!S.drag && document.pointerLockElement !== canvas) lockMouse();
+  if (e.button === 0) { firing = true; dragging = true; } else if (e.button === 2) blocking = true;
+});
+window.addEventListener('mouseup', e => { if (e.button === 2) blocking = false; else { dragging = false; firing = false; } });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('click', e => {
+  if (S.mode !== 'board') return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  picker.setFromCamera(ndc, camera);
+  if (!picker.ray.intersectPlane(ground, hitPt)) return;
+  if (Math.abs(hitPt.x) >= HALF || Math.abs(hitPt.z) >= HALF) { S.sel = -1; S.legal = []; drawBoardUi(); return; }
+  clickSquare(Math.floor((hitPt.z + HALF) / SQ) * 8 + Math.floor((hitPt.x + HALF) / SQ));
+});
+window.addEventListener('mousemove', e => {
+  if (S.mode !== 'duel' || S.paused || !A) return;
+  const locked = document.pointerLockElement === canvas;
+  if ((!locked && !(S.drag && dragging)) || !$('pause').classList.contains('hidden')) return;
+  const k = (locked ? .0022 : .005) * (A.scoped ? .3 : 1);   // slower, steadier aim through the scope
+  A.yaw -= (e.movementX || 0) * k; A.pitch = clamp(A.pitch - (e.movementY || 0) * k, -1.45, 1.45);
+});
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement === canvas) { S.drag = false; return; }
+  if (S.mode === 'duel' && !S.paused && !S.drag) setPaused(true);
+});
+document.addEventListener('pointerlockerror', () => { S.drag = true; if (S.paused) setPaused(false); });
+
+/* ================= menu ================= */
+(function buildMenu() {
+  const wrap = $('cards');
+  for (const t of ['p', 'n', 'b', 'r', 'q', 'k']) {
+    const K = KITS[t], c = document.createElement('div'); c.className = 'card';
+    const top = document.createElement('div'); top.className = 'top';
+    const gl = document.createElement('span'); gl.className = 'glyph'; gl.textContent = GLYPH[t];
+    const val = document.createElement('span'); val.className = 'val'; val.textContent = K.hp + ' health';
+    top.append(gl, val);
+    const h = document.createElement('h2'); h.textContent = NAME[t];
+    const ul = document.createElement('ul');
+    const rows = [['Click', K.weapon.name, K.weapon.charge ? 'Hold to draw, release to shoot.' : '']]; if (altRow(K)) rows.push(altRow(K));
+    rows.push(['Shift', K.ab[0].name, K.ab[0].desc], ['E', K.ab[1].name, K.ab[1].desc]);
+    for (const [k, n, d] of rows) { const li = document.createElement('li'), kb = document.createElement('kbd'), b = document.createElement('b'); kb.textContent = k; b.textContent = n + (d ? '. ' : ''); li.append(kb, b, d); ul.append(li); }
+    c.append(top, h, ul); wrap.append(c);
+  }
+})();
+$('play').addEventListener('click', () => startMatch(false));
+$('again').addEventListener('click', () => startMatch(S.role === 'h'));
+$('toMenu').addEventListener('click', toMenu);
+$('leave').addEventListener('click', toMenu);
+$('quit').addEventListener('click', toMenu);
+$('cancel').addEventListener('click', toMenu);
+$('create').addEventListener('click', () => openRoom(newCode(), 'h'));
+$('joinForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const code = String($('codeIn').value || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 6);
+  if (code.length < 4) { $('onlineNote').textContent = 'Type the match code your friend gave you, then press Join.'; return; }
+  openRoom(code, 'g');
+});
+$('copy').addEventListener('click', () => {
+  try { navigator.clipboard.writeText(S.code.toUpperCase()).then(() => { $('copy').textContent = 'Copied'; }, () => { $('copy').textContent = 'Select the code to copy it'; }); }
+  catch (e) { $('copy').textContent = 'Select the code to copy it'; }
+});
+(function initOnline() {
+  const off = () => { $('onlineNote').textContent = 'Online play is not available in this view. Open the shared page while signed in to Claude.'; };
+  try {
+    if (!window.claude || typeof window.claude.use !== 'function') return off();
+    Promise.resolve(window.claude.use('room')).then(r => {
+      if (!r || typeof r.join !== 'function') return off();
+      net.lobby = r; for (const id of ['create', 'codeIn', 'join']) $(id).disabled = false;
+      $('onlineNote').textContent = 'Both players need this page open. One creates a match and shares the code, the other types it in.';
+    }, off);
+  } catch (e) { off(); }
+})();
+$('fight').addEventListener('click', beginDuel);
+$('resume').addEventListener('click', () => { setPaused(false); lockMouse(); });
+
+resetBoard();
+window.__gambit = { S, net, openRoom, toMenu, tick, render, startMatch, genMoves, setBoard, clickSquare, doMove, sqIdx, sqName, bd: () => bd, duel: () => ({ A, B }) };
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

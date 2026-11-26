@@ -1,0 +1,60 @@
+GAME VAULT - HOW TO USE
+
+PLAY ON THIS COMPUTER
+  Open index.html (double-click it). All 15 games are in the "games" folder.
+  Some games need internet (they load 3D graphics and fonts online).
+
+=====================================================================
+ONE-TIME SETUP: PUT IT ONLINE SO "UPDATE FOR EVERYONE" WORKS (free)
+=====================================================================
+The site lives on GitHub Pages. When you press "Update for everyone",
+the page swaps the game file on GitHub, so every player gets it.
+
+1. MAKE A GITHUB ACCOUNT
+   Go to github.com and sign up (free). Remember your username.
+
+2. MAKE A HOME FOR THE SITE
+   Go to github.com/new
+   - Repository name: game-vault
+   - Choose "Public"
+   - Tick "Add a README file"
+   - Press "Create repository"
+
+3. UPLOAD THE GAMES
+   On your new repository page press "Add file" > "Upload files".
+   Unzip game-vault.zip, open the folder, select EVERYTHING inside it
+   (index.html, HOW-TO.txt and the games folder) and drag it onto the page.
+   Press "Commit changes" and wait for it to finish.
+
+4. TURN THE WEBSITE ON
+   In the repository press "Settings" (top) > "Pages" (left side).
+   Under "Branch" pick "main", leave "/ (root)", press "Save".
+   After about a minute your site is at:
+       https://YOUR-USERNAME.github.io/game-vault/
+   Share that link with family and friends.
+
+5. MAKE YOUR UPDATE KEY (this is your password for updating games)
+   Go to github.com/settings/personal-access-tokens/new
+   - Token name: Game Vault
+   - Expiration: pick the longest you're happy with (you can make a new one later)
+   - Repository access: "Only select repositories" > pick game-vault
+   - Permissions > Repository permissions > Contents: "Read and write"
+   - Press "Generate token" and COPY the key (starts with github_pat_).
+   Keep it secret, like a password. Anyone with it can change your games.
+
+=====================================================================
+UPDATING A GAME
+=====================================================================
+  On your site, press "Update" on the game and pick the new .html file.
+  - "Update for everyone": paste your update key (only the first time on
+    each device). Everyone gets the new version within about 10 minutes.
+  - "Only in this browser": try it yourself first. "Undo" takes it away.
+
+  Visitors without the key can still use "Only in this browser",
+  but that never changes the game for anyone else.
+
+  Lost the key or it expired? Do step 5 again and paste the new one.
+
+NOTE
+  Online co-op in Level Zero and online matches in Gambit Arena only work
+  on claude.ai. Everything else, including Quack Quest multiplayer, works anywhere.

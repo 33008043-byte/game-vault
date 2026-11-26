@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Primal Shores</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;background:#0a0d0b;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center}
+canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#000;outline:none;display:block;cursor:crosshair}
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="450" tabindex="0"></canvas>
+<script>
+"use strict";
+/* =====================================================================
+   PRIMAL SHORES — a dinosaur survival game
+   Sections: CORE · AUDIO · DATA · WORLD · ART   (a.js)
+             PLAYER · DINOSAURS · COMBAT          (b.js)
+             UI · SAVE · MAIN LOOP                (c.js)
+   ===================================================================== */
+// ============================ CORE ====================================
+const cv=document.getElementById('game'),ctx=cv.getContext('2d');
+const TS=32,N=160,CH=8,NC=N/CH,WORLD=N*TS,VH=450;let VW=800;
+const rnd=(a=1,b)=>b===undefined?Math.random()*a:a+Math.random()*(b-a);
+const rndi=(a,b)=>Math.floor(rnd(a,b+1));
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const dist=(a,b,c,d)=>Math.hypot(c-a,d-b);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const norm=(x,y)=>{const l=Math.hypot(x,y)||1;return {x:x/l,y:y/l};};
+const angDiff=(a,b)=>{const d=a-b;return Math.atan2(Math.sin(d),Math.cos(d));};
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function shade(hex,amt){const n=parseInt(hex.slice(1),16);const r=clamp((n>>16)+amt,0,255),g=clamp(((n>>8)&255)+amt,0,255),b=clamp((n&255)+amt,0,255);return '#'+((1<<24)|(r<<16)|(g<<8)|b).toString(16).slice(1);}
+function resize(){
+  const a=clamp(innerWidth/Math.max(1,innerHeight),1.25,2.1);VW=Math.round(VH*a);cv.width=VW;cv.height=VH;ctx.imageSmoothingEnabled=false;
+  const s=Math.min(innerWidth/VW,innerHeight/VH);cv.style.width=Math.floor(VW*s)+'px';cv.style.height=Math.floor(VH*s)+'px';
+}
+// ---- input ----
+const keys={},pressed={},mouse={x:0,y:0,down:false,click:false,rclick:false,wheel:0};
+const KM={' ':'space','escape':'esc','arrowup':'w','arrowdown':'s','arrowleft':'a','arrowright':'d'};
+const kname=e=>{const k=(e.key||'').toLowerCase();return KM[k]||k;};
+addEventListener('keydown',e=>{Snd.init();if(e.ctrlKey||e.metaKey||e.altKey)return;const k=kname(e);if(k.length===1||['space','tab','esc','shift','enter'].includes(k))e.preventDefault();if(!e.repeat)pressed[k]=true;keys[k]=true;});
+addEventListener('keyup',e=>{keys[kname(e)]=false;});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;mouse.down=false;});
+addEventListener('resize',resize);
+function mpos(e){const r=cv.getBoundingClientRect();mouse.x=(e.clientX-r.left)/Math.max(1,r.width)*VW;mouse.y=(e.clientY-r.top)/Math.max(1,r.height)*VH;}
+cv.addEventListener('mousemove',mpos);
+cv.addEventListener('mousedown',e=>{Snd.init();mpos(e);e.preventDefault();try{cv.focus();}catch(_){}if(e.button===0){mouse.down=true;mouse.click=true;}else mouse.rclick=true;});
+addEventListener('mouseup',e=>{if(e.button===0)mouse.down=false;});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('wheel',e=>{e.preventDefault();mouse.wheel+=Math.sign(e.deltaY);},{passive:false});
+const P_=(...ks)=>ks.some(k=>pressed[k]),K_=(...ks)=>ks.some(k=>keys[k]);
+
+// ============================ AUDIO ===================================
+const Snd={ctx:null,out:null,on:true,nb:null,
+  init(){if(this.ctx){if(this.ctx.state==='suspended'){try{this.ctx.resume();}catch(e){}}return;}
+    try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;this.ctx=new AC();this.out=this.ctx.createGain();this.out.gain.value=.28;this.out.connect(this.ctx.destination);
+      const n=this.ctx.sampleRate*.5|0;this.nb=this.ctx.createBuffer(1,n,this.ctx.sampleRate);const d=this.nb.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;}catch(e){this.ctx=null;}},
+  tone(f,d,type,vol,slide,delay){if(!this.ctx||!this.on)return;try{const c=this.ctx,t=c.currentTime+(delay||0),o=c.createOscillator(),g=c.createGain();o.type=type||'square';o.frequency.setValueAtTime(f,t);
+    if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t+d);g.gain.setValueAtTime(vol||.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(this.out);o.start(t);o.stop(t+d+.03);}catch(e){}},
+  noise(d,vol,delay,freq){if(!this.ctx||!this.nb||!this.on)return;try{const c=this.ctx,t=c.currentTime+(delay||0),s=c.createBufferSource(),g=c.createGain(),f=c.createBiquadFilter();s.buffer=this.nb;f.type='lowpass';f.frequency.value=freq||1800;
+    g.gain.setValueAtTime(vol||.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);s.connect(f);f.connect(g);g.connect(this.out);s.start(t);s.stop(t+d+.03);}catch(e){}},
+  play(n){const s=this;switch(n){
+    case'swing':s.noise(.08,.1,0,3500);break;case'chop':s.noise(.07,.16,0,900);s.tone(150,.06,'square',.08,-60);break;
+    case'rock':s.noise(.05,.16,0,4000);s.tone(700,.04,'triangle',.08,-300);break;case'hit':s.tone(180,.08,'square',.12,-100);s.noise(.07,.12);break;
+    case'hurt':s.tone(230,.2,'sawtooth',.18,-160);break;case'pick':s.tone(880,.05,'square',.06);s.tone(1175,.08,'square',.06,0,.05);break;
+    case'craft':[523,659,784].forEach((f,i)=>s.tone(f,.1,'square',.08,0,i*.07));break;case'eat':s.noise(.06,.1,0,1200);s.noise(.06,.1,.1,1200);break;
+    case'drink':s.tone(400,.12,'sine',.1,300);s.tone(500,.12,'sine',.1,300,.14);break;case'shoot':s.tone(700,.1,'triangle',.1,-400);break;
+    case'level':[392,523,659,784,1047].forEach((f,i)=>s.tone(f,.16,'triangle',.12,0,i*.08));break;case'tame':[523,659,784,988,1175,1568].forEach((f,i)=>s.tone(f,.2,'triangle',.12,0,i*.1));break;
+    case'roar':s.tone(110,.6,'sawtooth',.2,-50);s.noise(.6,.18,0,500);break;case'ko':s.tone(300,.5,'sine',.14,-220);break;
+    case'fail':s.tone(300,.15,'square',.1,-120);break;case'place':s.noise(.1,.14,0,500);s.tone(200,.08,'square',.08);break;
+    case'ui':s.tone(660,.05,'square',.05);break;case'boom':s.noise(.45,.28,0,500);s.tone(80,.4,'sine',.28,-40);break;
+    case'squawk':s.tone(900,.08,'square',.07,-300);break;}}};
+const MAJ=[0,2,4,5,7,9,11],MIN=[0,2,3,5,7,8,10],seq=s=>s.split(' ').map(x=>x==='-'?null:+x);
+const Music={cur:null,step:0,next:0,on:true,
+  tr:{day:{bpm:84,root:57,sc:MAJ,w:'triangle',mel:seq('0 - - 2 4 - - - 7 - 4 - 2 - - - 5 - - 4 2 - - - 0 - 2 - -1 - - -'),bass:seq('0 - - - 3 - - - 4 - - - 0 - - -')},
+      night:{bpm:66,root:50,sc:MIN,w:'sine',mel:seq('0 - - - 3 - - - 2 - - - - - - - 4 - - - 3 - - - 0 - - - - - - -'),bass:seq('0 - - - - - - - -2 - - - - - - -')},
+      danger:{bpm:140,root:45,sc:MIN,w:'sawtooth',mel:seq('0 0 7 0 6 0 5 0 4 0 5 0 6 4 2 1'),bass:seq('0 - 0 - 0 - 0 - -2 - -2 - -3 - -3 -')}},
+  set(n){if(this.cur!==n){this.cur=n;this.step=0;this.next=0;}},
+  update(){const c=Snd.ctx;if(!c||!this.on||!this.cur)return;const tr=this.tr[this.cur],sp=60/tr.bpm/2;if(this.next<c.currentTime)this.next=c.currentTime+.05;let g=0;
+    while(this.next<c.currentTime+.25&&g++<8){const i=this.step,dl=this.next-c.currentTime,m=tr.mel[i%tr.mel.length],b=tr.bass[i%tr.bass.length];
+      const fq=(d,o)=>{const k=((d%7)+7)%7,oc=Math.floor(d/7);return 440*Math.pow(2,(tr.root+tr.sc[k]+12*(oc+o)-69)/12);};
+      if(m!==null)Snd.tone(fq(m,0),sp*1.7,tr.w,.035,0,dl);if(b!==null)Snd.tone(fq(b,-2),sp*1.9,'triangle',.05,0,dl);this.step++;this.next+=sp;}}};
+
+// ============================ DATA ====================================
+// ---- items ----  w = weight, tool = how it hits, st = structure
+const IT={
+  wood:{n:'Wood',w:.5,d:'From trees. A hatchet gets the most.'},thatch:{n:'Thatch',w:.02,d:'From trees. A pick (or your fists) gets the most.'},
+  stone:{n:'Stone',w:.5,d:'From rocks. A hatchet gets the most.'},flint:{n:'Flint',w:.3,d:'From rocks. You need a pick.'},
+  fiber:{n:'Fiber',w:.02,d:'From bushes (press E).'},hide:{n:'Hide',w:.1,d:'From dead animals. A hatchet gets the most.'},
+  metal:{n:'Metal Ore',w:1,d:'From shiny rocks in the mountains. Needs a pick. Smelt it in a Forge.'},ingot:{n:'Metal Ingot',w:1,d:'Smelted in a Forge. For strong tools.'},
+  berry:{n:'Berries',w:.1,food:4,water:2,d:'Eat them, or feed plant-eaters to tame them.'},
+  narco:{n:'Narcoberry',w:.1,food:2,d:'Keeps a knocked-out dinosaur asleep.'},narcotic:{n:'Narcotic',w:.2,d:'Strong sleep medicine for big dinosaurs.'},
+  rawmeat:{n:'Raw Meat',w:.1,food:10,hp:-5,d:'Cook it at a campfire! Raw meat feeds meat-eaters when taming.'},meat:{n:'Cooked Meat',w:.1,food:30,hp:8,d:'Tasty. Fills you up and heals a little.'},
+  arrow:{n:'Stone Arrow',w:.1,d:'Ammo for the bow.'},tranq:{n:'Tranq Arrow',w:.1,d:'Bow ammo that knocks dinosaurs out.'},
+  pick:{n:'Stone Pick',w:2,tool:{type:'pick',dmg:14,cd:.45,reach:42,pw:20},d:'Rocks: flint. Trees: thatch. Bodies: meat.'},
+  hatchet:{n:'Stone Hatchet',w:2,tool:{type:'hatchet',dmg:16,cd:.45,reach:42,pw:20},d:'Trees: wood. Rocks: stone. Bodies: hide.'},
+  torch:{n:'Torch',w:1,tool:{type:'torch',dmg:10,cd:.45,reach:40,pw:5,light:1},d:'Lights up the night and keeps you a little warm.'},
+  spear:{n:'Spear',w:3,tool:{type:'spear',dmg:24,cd:.5,reach:62,pw:5},d:'Long reach. Good first weapon.'},
+  club:{n:'Wooden Club',w:3,tool:{type:'club',dmg:6,cd:.6,reach:44,pw:5,torp:26},d:'Knocks dinosaurs out so you can tame them.'},
+  sling:{n:'Slingshot',w:1,tool:{type:'sling',ranged:'stone',dmg:10,torp:18,cd:.7,spd:430},d:'Shoots stones. Knocks small dinosaurs out from far away.'},
+  bow:{n:'Bow',w:2,tool:{type:'bow',ranged:'arrow',dmg:34,cd:.75,spd:560},d:'Shoots arrows. Uses Tranq Arrows first if you have them.'},
+  mpick:{n:'Metal Pick',w:3,tool:{type:'pick',dmg:26,cd:.4,reach:44,pw:45,tier:2},d:'Twice the harvest of a stone pick.'},
+  mhatchet:{n:'Metal Hatchet',w:3,tool:{type:'hatchet',dmg:30,cd:.4,reach:44,pw:45,tier:2},d:'Twice the harvest of a stone hatchet.'},
+  pike:{n:'Pike',w:4,tool:{type:'spear',dmg:46,cd:.5,reach:70,pw:5},d:'A metal spear. Long and deadly.'},
+  sword:{n:'Sword',w:3,tool:{type:'sword',dmg:62,cd:.38,reach:50,pw:5},d:'The best melee weapon.'},
+  cloth:{n:'Cloth Outfit',w:1,armor:10,d:'Light armor.'},hidearmor:{n:'Hide Armor',w:4,armor:28,warm:1,d:'Good armor. Keeps you warm in the snow.'},flak:{n:'Metal Armor',w:10,armor:55,warm:1,d:'The best armor.'},
+  saddle_s:{n:'Small Saddle',w:5,d:'Ride a Parasaur, Raptor or Sabertooth.'},saddle_l:{n:'Large Saddle',w:10,d:'Ride a Trike, Stego, Carno, Bronto or Rex.'},saddle_f:{n:'Flyer Saddle',w:5,d:'Ride a Ptera and FLY.'},
+  campfire:{n:'Campfire',w:5,st:1,d:'Cook meat here. Gives light and warmth.'},bed:{n:'Sleeping Mat',w:3,st:1,d:'You wake up here if you die. Saves the game.'},
+  chest:{n:'Storage Box',w:5,st:1,d:'Store heavy things.'},wall:{n:'Wood Wall',w:4,st:1,d:'Blocks dinosaurs.'},door:{n:'Wood Door',w:4,st:1,d:'You can walk through. Dinosaurs cannot.'},
+  spikes:{n:'Spike Wall',w:5,st:1,d:'Hurts dinosaurs that push against it.'},forge:{n:'Forge',w:20,st:1,d:'Smelt metal and craft metal gear next to it.'},
+  art1:{n:'Artifact of the Hunter',w:1,d:'Bring all three artifacts to the Obelisk.'},art2:{n:'Artifact of the Brute',w:1,d:'Bring all three artifacts to the Obelisk.'},art3:{n:'Artifact of the Frost',w:1,d:'Bring all three artifacts to the Obelisk.'}
+};
+for(const k in IT)IT[k].id=k;
+const RECIPES=[
+  {id:'pick',lvl:1,cost:{wood:1,stone:1,thatch:10}},{id:'torch',lvl:1,cost:{wood:1,stone:1,thatch:5}},
+  {id:'meat',lvl:1,st:'fire',cost:{rawmeat:1}},
+  {id:'hatchet',lvl:2,cost:{wood:1,stone:1,flint:1,thatch:10}},{id:'spear',lvl:2,cost:{wood:8,flint:2,fiber:12}},
+  {id:'campfire',lvl:2,cost:{wood:2,stone:12,thatch:10,flint:1}},{id:'cloth',lvl:3,cost:{fiber:30}},
+  {id:'club',lvl:3,cost:{wood:6,fiber:12}},{id:'sling',lvl:4,cost:{wood:5,fiber:20,hide:1}},
+  {id:'bed',lvl:4,cost:{thatch:30,fiber:20,hide:3}},{id:'chest',lvl:4,cost:{wood:25,thatch:20,fiber:10}},
+  {id:'wall',lvl:5,cost:{wood:12,thatch:8,fiber:4}},{id:'door',lvl:5,cost:{wood:14,fiber:8}},{id:'spikes',lvl:6,cost:{wood:12,fiber:10,hide:2}},
+  {id:'narcotic',lvl:6,cost:{narco:5,rawmeat:1}},{id:'bow',lvl:7,cost:{wood:15,fiber:40}},{id:'arrow',n:5,lvl:7,cost:{flint:2,fiber:6,thatch:8}},
+  {id:'saddle_s',lvl:8,cost:{hide:25,fiber:30,wood:10}},{id:'hidearmor',lvl:8,cost:{hide:30,fiber:20}},{id:'tranq',lvl:9,cost:{arrow:1,narcotic:1}},
+  {id:'forge',lvl:10,cost:{stone:60,wood:20,hide:10,flint:10}},{id:'ingot',lvl:10,st:'forge',cost:{metal:2,wood:1}},
+  {id:'mpick',lvl:11,st:'forge',cost:{ingot:6,wood:6,hide:4}},{id:'mhatchet',lvl:11,st:'forge',cost:{ingot:6,wood:6,hide:4}},
+  {id:'pike',lvl:12,st:'forge',cost:{ingot:10,wood:10,hide:6}},{id:'saddle_l',lvl:13,cost:{hide:60,fiber:50,ingot:8}},
+  {id:'saddle_f',lvl:15,cost:{hide:45,fiber:40,ingot:6}},{id:'sword',lvl:16,st:'forge',cost:{ingot:22,wood:6,hide:10}},{id:'flak',lvl:18,st:'forge',cost:{ingot:30,hide:20,fiber:20}}
+];
+const xpNeed=l=>Math.round(15*Math.pow(l,1.6)),MAXLVL=40;
+const STATS=[['hp','Health','+10 max health'],['stam','Stamina','+10 max stamina'],['food','Food','+10 max food'],['water','Water','+10 max water'],['weight','Weight','Carry +25 more'],['melee','Melee','+6% melee damage'],['speed','Speed','+2.5% move speed'],['fort','Fortitude','Resist cold, get hungry slower']];
+// ---- dinosaurs ----  ag: 0 runs away, 1 fights back, 2 attacks on sight.  sh = body shape for the sprite
+const SP={
+  dodo:{n:'Dodo',diet:'h',hp:40,dmg:5,spd:55,ag:0,sc:1.4,torp:30,food:5,xp:6,meat:3,hide:2,c:['#b8926a','#e8d8b8','#7a5a3a'],sh:{b:[9,8],legs:2,lh:3,neck:[2,4],head:[5,4],tail:2,ft:'beak'}},
+  para:{n:'Parasaur',diet:'h',hp:200,dmg:12,spd:150,ag:0,sc:2,torp:150,food:14,xp:20,meat:8,hide:8,ride:'saddle_s',carry:150,c:['#c8a04a','#f0e0a0','#8a6a2a'],sh:{b:[14,8],legs:2,lh:7,neck:[4,6],head:[6,4],tail:10,ft:'crest'}},
+  trike:{n:'Trike',diet:'h',hp:380,dmg:28,spd:105,ag:1,sc:2.2,torp:250,food:24,xp:40,meat:14,hide:14,ride:'saddle_l',carry:300,c:['#7a9a5a','#c8d8a0','#4a6a3a'],sh:{b:[17,10],legs:4,lh:5,neck:[1,0],head:[9,7],tail:8,ft:'frill'}},
+  stego:{n:'Stego',diet:'h',hp:560,dmg:36,spd:85,ag:1,sc:2.4,torp:350,food:30,xp:55,meat:18,hide:18,ride:'saddle_l',carry:400,c:['#6a8a8a','#b8d0c8','#c05a2a'],sh:{b:[18,10],legs:4,lh:5,neck:[3,-3],head:[5,4],tail:10,ft:'plates'}},
+  bronto:{n:'Bronto',diet:'h',hp:1500,dmg:55,spd:70,ag:1,sc:3.2,torp:900,food:50,xp:120,meat:40,hide:40,ride:'saddle_l',carry:900,c:['#7a8aa0','#c0c8d8','#4a5a70'],sh:{b:[20,11],legs:4,lh:8,neck:[10,14],head:[5,4],tail:16,ft:''}},
+  dilo:{n:'Dilo',diet:'c',hp:90,dmg:8,spd:120,ag:2,sc:1.5,torp:60,food:7,xp:12,meat:4,hide:4,sight:150,spit:1,c:['#5a9a6a','#c8e0a0','#2a5a3a'],sh:{b:[11,6],legs:2,lh:6,neck:[3,4],head:[6,4],tail:9,ft:'spit'}},
+  raptor:{n:'Raptor',diet:'c',hp:180,dmg:18,spd:185,ag:2,sc:1.8,torp:180,food:14,xp:30,meat:8,hide:8,sight:210,ride:'saddle_s',carry:120,c:['#a0603a','#e0c090','#5a2a1a'],sh:{b:[13,6],legs:2,lh:7,neck:[4,4],head:[7,4],tail:11,ft:'teeth'}},
+  saber:{n:'Sabertooth',diet:'c',hp:260,dmg:26,spd:175,ag:2,sc:1.9,torp:220,food:18,xp:42,meat:10,hide:16,sight:220,ride:'saddle_s',carry:160,c:['#c8a878','#f0e8d0','#7a5a3a'],sh:{b:[14,7],legs:4,lh:6,neck:[2,1],head:[6,6],tail:5,ft:'fangs'}},
+  carno:{n:'Carno',diet:'c',hp:440,dmg:36,spd:150,ag:2,sc:2.5,torp:400,food:26,xp:70,meat:20,hide:18,sight:240,ride:'saddle_l',carry:300,c:['#a04a3a','#e0b090','#5a1a1a'],sh:{b:[15,8],legs:2,lh:8,neck:[3,4],head:[9,6],tail:12,ft:'horns'}},
+  rex:{n:'Rex',diet:'c',hp:1100,dmg:55,spd:135,ag:2,sc:3.4,torp:800,food:45,xp:200,meat:40,hide:36,sight:270,ride:'saddle_l',carry:500,c:['#5a6a4a','#c0c8a0','#2a3a1a'],sh:{b:[16,9],legs:2,lh:8,neck:[3,5],head:[10,7],tail:13,ft:'teeth'}},
+  ptera:{n:'Ptera',diet:'c',hp:150,dmg:15,spd:210,ag:0,sc:1.8,torp:120,food:16,xp:28,meat:6,hide:8,fly:1,ride:'saddle_f',carry:120,c:['#8a7a9a','#d8d0e0','#4a3a5a'],sh:{b:[11,5],legs:2,lh:3,neck:[3,2],head:[9,3],tail:3,ft:'wings'}},
+  piranha:{n:'Megapiranha',diet:'c',hp:60,dmg:12,spd:150,ag:2,sc:1.3,torp:999,food:99,xp:8,meat:3,hide:0,sight:170,swim:1,c:['#4a7a9a','#c0d8e0','#c03a2a'],sh:{b:[10,6],legs:0,lh:0,neck:[0,0],head:[3,5],tail:5,ft:'teeth'}},
+  titan:{n:'THE TITAN',diet:'c',hp:5200,dmg:70,spd:140,ag:2,sc:5.2,torp:99999,food:999,xp:1500,meat:80,hide:80,sight:900,c:['#3a2a4a','#8a5ab0','#1a0a2a'],sh:{b:[16,9],legs:2,lh:8,neck:[3,5],head:[10,7],tail:13,ft:'teeth'}}
+};
+const SPAWN={
+  2:[['dodo',5],['para',2],['trike',1],['ptera',1],['dilo',.6]],
+  3:[['dodo',3],['para',3],['trike',3],['stego',2],['raptor',1],['ptera',1],['bronto',.5]],
+  4:[['para',2],['trike',2],['stego',2],['dilo',3],['raptor',3],['carno',.8],['bronto',.5]],
+  5:[['raptor',4],['dilo',3],['carno',2],['rex',.6],['stego',1],['para',1]],
+  8:[['dilo',4],['raptor',2],['carno',1],['dodo',1]],
+  6:[['saber',3],['carno',2],['rex',.7],['ptera',2],['trike',1]],
+  7:[['saber',4],['rex',.4]],
+  0:[['piranha',1]]
+};
+const DNAMES=['Biscuit','Thunder','Mango','Pebble','Rocky','Luna','Chomp','Sunny','Tank','Pepper','Zigzag','Nugget','Shadow','Clover','Blaze','Mochi','Comet','Waffles','Storm','Ziggy'];
+
+// ============================ WORLD ===================================
+// tiles: 0 deep water, 1 shallow, 2 sand, 3 grass, 4 forest, 5 jungle, 6 rock, 7 snow, 8 swamp, 9 ancient floor
+const BIO=['Deep Water','Shallows','Beach','Grassland','Forest','Jungle','Mountain','Snow Peak','Swamp','Ancient Ruins'];
+const MAPC=['#1f4fa8','#3d7fd6','#e3c77d','#62a84a','#3f8a30','#256b2a','#7a7570','#eef4fb','#4a6a4a','#b0a0c8'];
+const W={tiles:null,chunks:[],structs:[],sgrid:new Map(),regrow:[],sites:[],ob:null,spawn:null,seed:1,mapCv:null};
+const tileAt=(tx,ty)=>(tx<0||ty<0||tx>=N||ty>=N)?0:W.tiles[ty*N+tx];
+const tileAtPx=(x,y)=>tileAt(Math.floor(x/TS),Math.floor(y/TS));
+const chunkOf=(x,y)=>W.chunks[clamp(Math.floor(y/TS/CH),0,NC-1)*NC+clamp(Math.floor(x/TS/CH),0,NC-1)];
+function mkNoise(seed){
+  const rg=mulberry(seed),T=new Float32Array(4096);for(let i=0;i<4096;i++)T[i]=rg();
+  const h=(x,y)=>T[((x*73856093)^(y*19349663))&4095];
+  const n=(x,y)=>{const xi=Math.floor(x),yi=Math.floor(y),fx=x-xi,fy=y-yi,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy),a=h(xi,yi),b=h(xi+1,yi),c=h(xi,yi+1),d=h(xi+1,yi+1);return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;};
+  return (x,y)=>n(x,y)*.5+n(x*2.1+7,y*2.1+3)*.3+n(x*4.3+1,y*4.3+9)*.2;
+}
+const NODE={tree:{hp:60,r:7},rock:{hp:70,r:11},metal:{hp:90,r:11},bush:{hp:3,r:0},carcass:{hp:60,r:0}};
+function addNode(k,x,y,v,extra){const n=Object.assign({k,x,y,v:v||0,hp:NODE[k].hp,sh:0},extra);chunkOf(x,y).push(n);return n;}
+function removeNode(n,regrow){const c=chunkOf(n.x,n.y),i=c.indexOf(n);if(i>=0)c.splice(i,1);if(regrow&&n.k!=='carcass')W.regrow.push({n,t:240});}
+function nodesNear(x,y,rad,fn){const c0=clamp(Math.floor((x-rad)/TS/CH),0,NC-1),c1=clamp(Math.floor((x+rad)/TS/CH),0,NC-1),r0=clamp(Math.floor((y-rad)/TS/CH),0,NC-1),r1=clamp(Math.floor((y+rad)/TS/CH),0,NC-1);
+  for(let r=r0;r<=r1;r++)for(let c=c0;c<=c1;c++){const L=W.chunks[r*NC+c];for(let i=L.length-1;i>=0;i--)fn(L[i]);}}
+function nearestLand(tx,ty,ok){for(let r=0;r<60;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;const x=tx+dx,y=ty+dy;if(x<4||y<4||x>=N-4||y>=N-4)continue;if(ok(tileAt(x,y),x,y))return [x,y];}return [tx,ty];}
+function genWorld(seed){
+  W.seed=seed;W.tiles=new Uint8Array(N*N);W.chunks=[];for(let i=0;i<NC*NC;i++)W.chunks.push([]);W.structs=[];W.sgrid=new Map();W.regrow=[];W.sites=[];
+  const el=mkNoise(seed),mo=mkNoise(seed+101),rg=mulberry(seed+7);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const d=Math.hypot((x-N/2)/(N/2),(y-N/2)/(N/2));let e=el(x/20,y/20)*.9+.48*(1-d*d)-.24;if(d>.82)e-=(d-.82)*3;
+    const m=mo(x/17,y/17);let t;
+    if(e<.27)t=0;else if(e<.345)t=1;else if(e<.385)t=2;else if(e>.80)t=7;else if(e>.67)t=6;else if(e<.45&&m>.6)t=8;else if(m<.44)t=3;else if(m<.56)t=4;else t=5;
+    W.tiles[y*N+x]=t;}
+  // obelisk plaza near the middle, artifact shrines far apart
+  const land=t=>t>=3&&t<=5;
+  const ob=nearestLand(N/2,N/2,land);W.ob={tx:ob[0],ty:ob[1],x:ob[0]*TS+16,y:ob[1]*TS+16};
+  for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++)W.tiles[(ob[1]+dy)*N+ob[0]+dx]=9;
+  const a0=rg()*6.283,want=[t=>t===5||t===4,t=>t===6||t===4||t===5,t=>t===7||t===6];
+  for(let i=0;i<3;i++){const a=a0+i*2.094,c=nearestLand(Math.round(N/2+Math.cos(a)*46),Math.round(N/2+Math.sin(a)*46),(t,x,y)=>want[i](t)&&Math.hypot(x-ob[0],y-ob[1])>26);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)W.tiles[(c[1]+dy)*N+c[0]+dx]=9;
+    W.sites.push({i,tx:c[0],ty:c[1],x:c[0]*TS+16,y:c[1]*TS+16,taken:false,cleared:false,spawned:false,alpha:['raptor','carno','saber'][i]});}
+  // a calm beach to wake up on (south side)
+  let best=null,bd=1e9;for(let y=N/2;y<N-4;y++)for(let x=20;x<N-20;x++){if(tileAt(x,y)!==2||tileAt(x,y-2)<2)continue;const dd=Math.abs(x-N/2)+Math.abs(y-N*.8)*.5;if(dd<bd){bd=dd;best=[x,y];}}
+  if(!best)best=nearestLand(N/2,Math.round(N*.8),t=>t===2||t===3);
+  W.spawn={x:best[0]*TS+16,y:best[1]*TS+16};
+  // resources
+  const DENS={2:[['tree',.025,1],['rock',.012],['bush',.012]],3:[['tree',.03,0],['bush',.05],['rock',.016]],4:[['tree',.15,0],['bush',.05],['rock',.02]],5:[['tree',.22,2],['bush',.08],['rock',.012]],
+    8:[['tree',.11,2],['bush',.07]],6:[['rock',.07],['metal',.035],['tree',.02,3]],7:[['rock',.05],['metal',.05],['tree',.04,3]]};
+  for(let y=2;y<N-2;y++)for(let x=2;x<N-2;x++){const D=DENS[tileAt(x,y)];if(!D)continue;if(Math.hypot(x*TS-W.spawn.x,y*TS-W.spawn.y)<50)continue;const r=rg();let acc=0;
+    for(const q of D){acc+=q[1];if(r<acc){addNode(q[0],x*TS+6+rg()*20,y*TS+10+rg()*18,q[2]||0);break;}}}
+  // overview map
+  const mc=document.createElement('canvas');mc.width=mc.height=N;const mg=mc.getContext('2d');
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){mg.fillStyle=MAPC[tileAt(x,y)];mg.fillRect(x,y,1,1);}W.mapCv=mc;
+}
+// ---- structures ----
+const SOLIDST={wall:1,chest:1,forge:1,campfire:1,spikes:1,door:2};
+const STHP={wall:400,door:300,spikes:260,chest:200,forge:500,campfire:120,bed:60};
+function addStruct(k,tx,ty,o){const s=Object.assign({k,tx,ty,hp:STHP[k],x:tx*TS+16,y:ty*TS+16},o);W.structs.push(s);W.sgrid.set(tx+ty*N,s);return s;}
+function removeStruct(s){const i=W.structs.indexOf(s);if(i>=0)W.structs.splice(i,1);W.sgrid.delete(s.tx+s.ty*N);}
+const structAt=(tx,ty)=>W.sgrid.get(tx+ty*N);
+// ---- collision ----  mode: 'p' player, 'd' land dinosaur, 's' swimmer, 'f' flyer
+function blockedAt(x,y,r,mode){
+  if(x<r||y<r||x>WORLD-r||y>WORLD-r)return true;if(mode==='f')return false;
+  for(let i=0;i<4;i++){const px=x+(i&1?r:-r),py=y+(i&2?r:-r),tx=Math.floor(px/TS),ty=Math.floor(py/TS),t=tileAt(tx,ty);
+    if(mode==='s'){if(t>1)return true;continue;}
+    if(mode==='d'&&t===0)return true;
+    const s=W.sgrid.get(tx+ty*N);if(s){const sv=SOLIDST[s.k];if(sv===1||(sv===2&&mode!=='p'))return true;}}
+  if(mode==='p'){let hit=false;nodesNear(x,y,24,n=>{const nr=NODE[n.k].r;if(nr&&dist(x,y,n.x,n.y)<nr+r*.7)hit=true;});if(hit)return true;}
+  return false;
+}
+function moveEnt(e,dx,dy,mode){const r=e.cr||8;let m=false;if(dx&&!blockedAt(e.x+dx,e.y,r,mode)){e.x+=dx;m=true;}if(dy&&!blockedAt(e.x,e.y+dy,r,mode)){e.y+=dy;m=true;}return m;}
+
+// ============================ ART =====================================
+function R(g,c,x,y,w,h){g.fillStyle=c;g.fillRect(x,y,w,h);}
+function mkCv(w,h,fn){const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'));return c;}
+const tileImg=[],SPR={};
+function buildArt(){
+  const speck=(g,rg,c,n,w,h)=>{g.fillStyle=c;for(let i=0;i<n;i++)g.fillRect(((rg()*15)|0)*2,((rg()*15)|0)*2,w||2,h||2);};
+  const base=['#1f4fa8','#3d7fd6','#e3c77d','#62a84a','#4a9438','#2f7a2e','#7a7570','#eef4fb','#4f6a48','#9a8ab0'];
+  for(let t=0;t<10;t++){tileImg[t]=[0,1].map(f=>mkCv(TS,TS,g=>{const rg=mulberry(t*91+f*13+5);R(g,base[t],0,0,TS,TS);
+    if(t<2){g.fillStyle=t?'#6aa4ec':'#3568c4';for(let i=0;i<4;i++)g.fillRect((i*9+f*7+3)%26,4+i*7,6,2);}
+    else if(t===2){speck(g,rg,'#cfae62',8);speck(g,rg,'#f1dc9c',5);}
+    else if(t>=3&&t<=5){speck(g,rg,shade(base[t],-22),9,2,4);speck(g,rg,shade(base[t],26),5);if(t===3&&f)R(g,'#ffe066',((rg()*14)|0)*2,((rg()*14)|0)*2,2,2);}
+    else if(t===6){speck(g,rg,'#5f5a56',8,4,2);speck(g,rg,'#96918a',5);}
+    else if(t===7){speck(g,rg,'#d3e2f2',8);speck(g,rg,'#ffffff',4);}
+    else if(t===8){speck(g,rg,'#3a5238',8,2,4);g.fillStyle='#3d6f8a';g.fillRect(4+f*2,8,8,4);g.fillRect(18,20-f*2,8,4);}
+    else{g.fillStyle='#7a6a90';g.fillRect(0,15,32,2);g.fillRect(15,0,2,15);g.fillRect(7,17,2,15);g.fillRect(23,17,2,15);speck(g,rg,'#b8a8d0',4);}}));}
+  const TREE=[['#1f6b2c','#2f8a3a','#49a84f'],['#3f8a3a','#5aae4a','#8fd46a'],['#14521f','#1f6b2c','#2f8a3a'],['#1d5a44','#226b50','#eef4fb']];
+  SPR.tree=TREE.map((c,v)=>mkCv(48,64,g=>{g.fillStyle='rgba(0,0,0,.22)';g.fillRect(12,58,24,5);
+    if(v===1){R(g,'#8a6a45',22,22,5,38);R(g,'#6b4f30',22,30,5,2);R(g,'#6b4f30',22,42,5,2);for(let i=0;i<5;i++){const a=-2.6+i*.5;g.fillStyle=i%2?c[1]:c[0];for(let k=1;k<6;k++)g.fillRect(24+Math.cos(a)*k*4-3,22+Math.sin(a)*k*3+k*k*.5-3,7,5);}R(g,c[2],21,16,7,6);}
+    else if(v===3){R(g,'#5a3a20',21,44,6,16);R(g,c[0],8,36,32,12);R(g,c[1],12,24,24,13);R(g,c[1],16,12,16,13);R(g,c[0],20,4,8,9);R(g,c[2],20,4,8,2);R(g,c[2],16,12,6,2);R(g,c[2],12,24,7,2);R(g,c[2],30,36,8,2);}
+    else{R(g,'#6b4423',20,36,8,24);R(g,'#4f3018',20,36,2,24);R(g,c[0],4,14,40,26);R(g,c[1],8,6,32,26);R(g,c[2],13,9,12,8);R(g,c[0],2,22,6,12);R(g,c[0],40,22,6,12);R(g,shade(c[0],-18),10,36,28,5);if(v===2){R(g,c[2],30,20,8,5);R(g,'#e0412e',12,26,3,3);}}}));
+  SPR.rock=mkCv(34,28,g=>{g.fillStyle='rgba(0,0,0,.2)';g.fillRect(2,23,30,5);R(g,'#6f6a66',3,8,28,18);R(g,'#8f8a84',6,3,20,14);R(g,'#aaa59d',9,5,9,4);R(g,'#4d4946',3,22,28,4);});
+  SPR.metal=mkCv(34,28,g=>{g.drawImage(SPR.rock,0,0);R(g,'#e0b040',9,10,4,3);R(g,'#ffe27a',20,7,4,3);R(g,'#e0b040',22,16,5,3);R(g,'#ffe27a',12,18,3,2);});
+  SPR.bush=mkCv(30,24,g=>{g.fillStyle='rgba(0,0,0,.18)';g.fillRect(2,20,26,4);R(g,'#2f8a3a',2,6,26,16);R(g,'#49a84f',5,2,20,12);R(g,'#7fd47a',9,4,7,4);R(g,'#b04ad0',6,12,3,3);R(g,'#e0412e',19,9,3,3);R(g,'#ffd84a',14,15,3,3);});
+}
+// ---- dinosaur sprite (side view, feet at y) ----
+function drawDino(g,d,x,y,t){
+  const S=SP[d.sp],sh=S.sh,u=S.sc*(d.alpha?1.35:1)*.9,c=d.flash>0?['#fff','#fff','#fff']:d.alpha?[shade(S.c[0],-30),S.c[1],'#c0201a']:S.c,bw=sh.b[0],bh=sh.b[1];
+  g.save();g.translate(Math.round(x),Math.round(y));
+  if(d.ko){g.translate(0,-bh*u*.4);g.rotate(d.face*1.35);g.translate(0,bh*u*.5);}
+  g.scale(d.face,1);
+  const r=(col,a,b,w,h)=>{g.fillStyle=col;g.fillRect(a*u,b*u,w*u,h*u);};
+  const st=d.mv&&!d.ko?Math.sin(t*12+d.seed)*1.5:0,top=-bh-sh.lh,fl=S.fly&&(d.air||d.mv)&&!d.ko?Math.sin(t*14)*4:0;
+  for(let i=0;i<3;i++)r(c[0],-bw/2-sh.tail*(i+1)/3,top+bh*.2+i*bh*.1,sh.tail/3+.6,bh*(.55-i*.14));
+  if(sh.legs===4){r(c[2],-bw/2+1.5+st,-sh.lh,2.4,sh.lh);r(c[2],bw/2-4.5-st,-sh.lh,2.4,sh.lh);r(c[0],-bw/2+.5-st,-sh.lh,2.6,sh.lh);r(c[0],bw/2-3.5+st,-sh.lh,2.6,sh.lh);}
+  else if(sh.legs===2){r(c[2],-.5+st,-sh.lh,2.4,sh.lh);r(c[0],-2-st,-sh.lh,2.6,sh.lh);r(c[0],-2-st,-1,4,1);}
+  r(c[0],-bw/2,top,bw,bh);r(c[1],-bw/2+1,top+bh*.62,bw-2,bh*.38);
+  const nx=sh.neck[0],ny=sh.neck[1],hw=sh.head[0],hh=sh.head[1];
+  for(let i=1;i<=3;i++)r(c[0],bw/2-2.5+nx*i/3,top+1-ny*i/3,3.2,Math.max(3,bh*.45));
+  const hx=bw/2+nx-1,hy=top-ny-hh*.35;
+  r(c[0],hx,hy,hw,hh);r(c[2],hx+hw*.35,hy+hh*.68,hw*.65,.7);r(d.alpha||d.sp==='titan'?'#ff3020':'#111',hx+hw*.3,hy+hh*.22,1.2,1.2);
+  switch(sh.ft){
+    case'beak':r('#e0a030',hx+hw-.5,hy+hh*.3,2.2,2);break;
+    case'crest':r(c[2],hx-4.5,hy-2,6,2);r(c[2],hx-6,hy-3,3,1.5);break;
+    case'frill':r(c[2],hx-2.5,hy-3,3,hh+5);r('#eee',hx+hw*.45,hy-3.5,1,3.5);r('#eee',hx+hw-.5,hy+hh*.3,2.5,1);break;
+    case'plates':for(let i=0;i<5;i++)r(c[2],-bw/2+1.5+i*(bw-3)/5,top-3-(i===2?1:0),2.2,3.2);r('#eee',-bw/2-sh.tail,top+bh*.2,1,-2.5);r('#eee',-bw/2-sh.tail+2,top+bh*.2,1,-2.5);break;
+    case'spit':r('#e0c040',hx-1.5,hy-2,2,hh+3);break;
+    case'fangs':r('#fff',hx+hw-2,hy+hh,1,2.4);r(c[2],hx+.5,hy-1.5,1.5,1.5);break;
+    case'horns':r(c[2],hx+1.5,hy-1.5,1.2,1.5);r(c[2],hx+3.5,hy-1.5,1.2,1.5);r('#fff',hx+hw*.45,hy+hh*.68,hw*.5,.6);break;
+    case'teeth':r('#fff',hx+hw*.45,hy+hh*.68,hw*.5,.6);break;
+    case'wings':r(c[2],-bw/2-2,top-2-fl,bw+6,2.5);r(c[0],-bw/2+1,top-4-fl*1.6,bw,2.2);r(c[2],hx-3,hy-2,4,1.2);break;
+  }
+  if((sh.ft==='teeth'||sh.ft==='horns'||sh.ft==='spit')&&sh.legs===2)r(c[0],bw/2-.5,top+bh*.62,2.5,1.2);
+  if(d.saddle){r('#7a4a22',-3,top-1.2,7,2.2);r('#b07a45',-2,top-2,5,1);}
+  g.restore();
+}
+// ---- survivor sprite ----
+function drawHero(g,cx,cy,dir,fr,armor,s){
+  s=s||2;const X=Math.round(cx-8*s),Y=Math.round(cy-13*s),r=(c,x,y,w,h)=>{g.fillStyle=c;g.fillRect(X+x*s,Y+y*s,w*s,h*s);};
+  const body=armor==='flak'?'#8f98a8':armor==='hidearmor'?'#8a5a2a':armor==='cloth'?'#d8cfa8':'#c98a5a',skin='#e8b98a',hair='#5a3a22',a=fr%2?1:0;
+  r('#5a4632',5,13,2,2+a);r('#5a4632',9,13,2,3-a);r(shade(body,-40),2,8,2,4);r(shade(body,-40),12,8,2,4);r(skin,2,11,2,2);r(skin,12,11,2,2);
+  r(body,4,8,8,5);r(shade(body,-30),4,12,8,1);if(!armor)r(skin,5,8,6,3);
+  r(skin,4,2,8,6);
+  if(dir===3)r(hair,4,1,8,6);else{r(hair,4,1,8,2);if(dir===1)r(hair,9,3,3,4);else if(dir===2)r(hair,4,3,3,4);else{r(hair,4,3,1,2);r(hair,11,3,1,2);}}
+  if(dir===0){r('#222',6,5,1,1);r('#222',9,5,1,1);}else if(dir===1)r('#222',5,5,1,1);else if(dir===2)r('#222',10,5,1,1);
+  if(armor==='flak'){r('#aab3c2',3,0,10,3);r('#aab3c2',3,3,1,3);r('#aab3c2',12,3,1,3);}
+}
+// ---- item icons (16px) ----
+function drawIcon(g,id,x,y){
+  const r=(c,a,b,w,h)=>{g.fillStyle=c;g.fillRect(x+a,y+b,w,h);},T=IT[id]&&IT[id].tool,metal=id[0]==='m'||id==='pike'||id==='sword',hd=metal?'#b9c4d4':'#8f8a84';
+  if(T&&T.type==='pick'){for(let i=0;i<6;i++)r('#8a5a2a',2+i*2,13-i*2,2,2);r(hd,6,1,9,3);r(hd,4,3,3,2);r(hd,13,3,2,4);}
+  else if(T&&T.type==='hatchet'){for(let i=0;i<6;i++)r('#8a5a2a',2+i*2,13-i*2,2,2);r(hd,8,1,6,7);r('#fff',13,2,1,5);}
+  else if(T&&T.type==='spear'){for(let i=0;i<6;i++)r('#8a5a2a',1+i*2,13-i*2,2,2);r(hd,11,1,4,4);r('#fff',13,1,2,2);}
+  else if(id==='sword'){for(let i=0;i<5;i++)r('#dfe6ee',10-i*2,2+i*2,3,3);r('#ffd84a',2,10,6,2);r('#6b4423',1,12,3,3);}
+  else if(id==='club'){for(let i=0;i<4;i++)r('#8a5a2a',2+i*2,12-i*2,3,3);r('#a8743a',8,2,6,6);r('#6b4423',10,4,2,2);}
+  else if(id==='torch'){r('#8a5a2a',7,7,2,8);r('#ff7b2e',5,1,6,7);r('#ffe27a',7,3,2,4);}
+  else if(id==='sling'){r('#8a5a2a',7,7,2,8);r('#8a5a2a',3,2,2,6);r('#8a5a2a',11,2,2,6);r('#8a5a2a',4,7,8,2);r('#3a3a3a',5,3,6,1);}
+  else if(id==='bow'){r('#8a5a2a',4,1,2,14);r('#8a5a2a',6,1,3,2);r('#8a5a2a',6,13,3,2);r('#8a5a2a',9,3,2,2);r('#8a5a2a',9,11,2,2);r('#ddd',11,4,1,8);}
+  else if(id==='arrow'||id==='tranq'){for(let i=0;i<6;i++)r('#8a5a2a',2+i*2,12-i*2,2,2);r(id==='tranq'?'#b04ad0':'#ddd',12,1,3,3);r('#e8e8e8',1,13,3,2);}
+  else if(IT[id].armor){const c=id==='flak'?'#8f98a8':id==='hidearmor'?'#8a5a2a':'#d8cfa8';r(c,3,3,10,11);r(c,1,3,3,5);r(c,12,3,3,5);r(shade(c,40),5,5,6,2);}
+  else if(id.startsWith('saddle')){const c=id==='saddle_f'?'#8a7a9a':id==='saddle_l'?'#5a3a20':'#8a5a2a';r(c,2,6,12,5);r(shade(c,40),4,4,8,3);r('#ccc',4,11,2,3);r('#ccc',10,11,2,3);}
+  else switch(id){
+    case'wood':r('#6b4423',1,5,14,7);r('#8a5a2a',1,5,14,2);r('#c9a36b',12,6,3,5);break;
+    case'thatch':r('#d9c070',2,3,3,11);r('#c0a050',6,2,3,12);r('#d9c070',10,4,3,10);r('#8a5a2a',1,8,14,2);break;
+    case'stone':r('#6f6a66',2,5,12,9);r('#8f8a84',4,3,8,6);r('#aaa59d',5,4,4,2);break;
+    case'flint':r('#3a3a44',3,4,10,9);r('#5a5a68',5,3,6,5);r('#9a9aa8',6,4,2,2);break;
+    case'fiber':r('#8fd46a',3,2,2,12);r('#6ab04a',7,3,2,11);r('#8fd46a',11,2,2,12);break;
+    case'hide':r('#8a5a2a',2,3,12,10);r('#a8743a',4,5,8,6);r('#8a5a2a',1,2,3,3);r('#8a5a2a',12,2,3,3);break;
+    case'metal':r('#6f6a66',2,5,12,9);r('#e0b040',4,6,4,3);r('#ffe27a',9,9,4,3);break;
+    case'ingot':r('#8f98a8',2,7,12,6);r('#c9d2e0',3,5,10,3);break;
+    case'berry':r('#b04ad0',3,6,5,5);r('#e0412e',8,4,5,5);r('#ffd84a',7,9,5,5);r('#3f8a30',7,2,2,3);break;
+    case'narco':r('#2a2a3a',4,5,8,8);r('#5a5a78',5,6,3,3);r('#3f8a30',7,2,2,3);break;
+    case'narcotic':r('#ddd',6,1,4,3);r('#5a2a8a',4,4,8,10);r('#b08ae0',5,6,2,4);break;
+    case'rawmeat':r('#e04a5a',3,4,10,8);r('#ff8a9a',5,5,4,3);r('#f4ecd8',1,10,4,3);break;
+    case'meat':r('#8a4a22',3,4,10,8);r('#b0703a',5,5,4,3);r('#f4ecd8',1,10,4,3);break;
+    case'campfire':r('#5a3a20',2,11,12,3);r('#ff7b2e',5,4,6,8);r('#ffe27a',7,7,2,4);break;
+    case'bed':r('#8a5a2a',1,6,14,7);r('#d9c070',2,7,12,5);r('#e8e0c8',2,7,4,5);break;
+    case'chest':r('#7a5230',2,5,12,9);r('#94683f',3,6,10,3);r('#ffd84a',7,8,2,3);break;
+    case'wall':r('#8a5a2a',2,2,12,12);r('#6b4423',2,6,12,1);r('#6b4423',2,10,12,1);r('#6b4423',7,2,1,12);break;
+    case'door':r('#8a5a2a',3,1,10,14);r('#6b4423',4,2,8,12);r('#ffd84a',10,8,2,2);break;
+    case'spikes':r('#6b4423',1,11,14,3);for(let i=0;i<4;i++){r('#c9a36b',2+i*3.5,3,2,8);r('#fff',2+i*3.5,2,2,2);}break;
+    case'forge':r('#5f5a56',2,4,12,10);r('#2a2826',5,7,6,5);r('#ff7b2e',6,9,4,3);r('#8f8a84',2,2,12,2);break;
+    default:{const c=id==='art1'?'#7dff8a':id==='art2'?'#ff7b5a':'#9be8ff';r('#3a3848',3,2,10,12);r(c,5,4,6,8);r('#fff',6,5,2,3);}
+  }
+}
+// ============================ GAME STATE ==============================
+let G={state:'title'},P=null;
+let dinos=[],projs=[],parts=[],texts=[],toasts=[],hazards=[];
+let gt=0,shakeT=0,shakeA=0;const cam={x:0,y:0};
+const DAYLEN=420;
+const isNight=()=>G.time>=.74&&G.time<.97;
+function nightAlpha(){const t=G.time;if(t<.68)return 0;if(t<.76)return(t-.68)/.08*.6;if(t<.95)return .6;return Math.max(0,(1-t)/.05*.6);}
+function shake(a){shakeA=Math.max(shakeA,a);shakeT=.25;}
+function toast(s,c,t){if(toasts.length&&toasts[toasts.length-1].s===s){toasts[toasts.length-1].t=t||4;return;}toasts.push({s,c:c||'#fff',t:t||4});if(toasts.length>4)toasts.shift();}
+function addText(x,y,s,c){texts.push({x,y,s:String(s),c:c||'#fff',t:.9});if(texts.length>60)texts.shift();}
+function burst(x,y,c,n,sp){for(let i=0;i<n;i++){const a=rnd(6.283),v=rnd(sp*.3,sp);parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,c,t:rnd(.25,.6),s:rnd(2,4)});}if(parts.length>400)parts.splice(0,parts.length-400);}
+
+// ============================ PLAYER ==================================
+function mkPlayer(){return {x:W.spawn.x,y:W.spawn.y,cr:7,r:8,hp:100,stam:100,food:100,water:100,lvl:1,xp:0,pts:0,st:{hp:0,stam:0,food:0,water:0,weight:0,melee:0,speed:0,fort:0},
+  inv:{},hot:[null,null,null,null,null,null,null,null],sel:0,armor:null,mount:null,ang:0,dir:0,swing:0,cd:0,walk:0,hurtT:0,slow:0,bed:null,lastHit:null,lastHitT:0,dead:false};}
+const maxHP=()=>100+10*P.st.hp,maxStam=()=>100+10*P.st.stam,maxFood=()=>100+10*P.st.food,maxWater=()=>100+10*P.st.water;
+const maxWeight=()=>100+25*P.st.weight+(P.mount?SP[P.mount.sp].carry:0);
+function invWeight(){let w=0;for(const k in P.inv)w+=IT[k].w*P.inv[k];return w;}
+const has=(id,n)=>(P.inv[id]||0)>=(n||1);
+function addItem(id,n,quiet){if(n<=0)return;P.inv[id]=(P.inv[id]||0)+n;const it=IT[id];
+  if(!P.hot.includes(id)&&(it.tool||it.st||id==='berry'||id==='meat')){const i=P.hot.indexOf(null);if(i>=0)P.hot[i]=id;}
+  if(!quiet){const last=texts[texts.length-1],s='+'+n+' '+it.n;if(!(last&&last.s===s&&last.t>.7))addText(P.x+rnd(-14,14),P.y-34-rnd(0,14),s,'#ffe9a0');}}
+function take(id,n){n=n||1;P.inv[id]=(P.inv[id]||0)-n;if(P.inv[id]<=0){delete P.inv[id];const i=P.hot.indexOf(id);if(i>=0)P.hot[i]=null;}}
+function gainXP(n){if(P.lvl>=MAXLVL)return;P.xp+=n;
+  while(P.lvl<MAXLVL&&P.xp>=xpNeed(P.lvl)){P.xp-=xpNeed(P.lvl);P.lvl++;P.pts++;Snd.play('level');burst(P.x,P.y-10,'#ffe066',24,120);
+    const nw=RECIPES.filter(r=>r.lvl===P.lvl).map(r=>IT[r.id].n);
+    toast('LEVEL '+P.lvl+'!  Press TAB to spend your stat point.'+(nw.length?'  New recipes: '+nw.join(', '):''),'#ffe066',6);}}
+function nearStruct(kinds,rad){return W.structs.some(s=>kinds.includes(s.k)&&dist(P.x,P.y,s.x,s.y)<rad);}
+function nearWater(){for(const o of [[0,0],[22,0],[-22,0],[0,22],[0,-22]])if(tileAtPx(P.x+o[0],P.y+o[1])<=1)return true;return false;}
+function hurtPlayer(dmg,raw,src){
+  if(P.dead||G.state==='win')return;
+  if(P.mount&&!raw){hurtDino(P.mount,dmg,src);return;}
+  if(!raw){dmg*=100/(100+2*((P.armor&&IT[P.armor].armor)||0));if(P.lvl<4)dmg*=.5; // go easy on brand-new survivors
+   addText(P.x,P.y-30,'-'+Math.max(1,Math.round(dmg)),'#ff5a5a');Snd.play('hurt');shake(4);burst(P.x,P.y-10,'#e0412e',6,80);}
+  P.hp-=dmg;P.hurtT=5;
+  if(P.hp<=0)die();
+}
+function die(){
+  P.hp=0;P.dead=true;if(P.mount){P.mount.air=false;P.mount=null;}
+  const inv=P.inv;if(P.armor)inv[P.armor]=(inv[P.armor]||0)+1;
+  const keep={};for(const k of ['art1','art2','art3'])if(inv[k]){keep[k]=inv[k];delete inv[k];} // artifacts never leave you
+  if(G.bag)for(const k in G.bag.inv)inv[k]=(inv[k]||0)+G.bag.inv[k];
+  if(Object.keys(inv).length)G.bag={x:P.x,y:P.y,inv};
+  P.inv=keep;P.armor=null;P.hot=P.hot.map(()=>null);G.state='dead';G.deadT=gt;Snd.play('fail');shake(8);
+}
+function respawn(){
+  const b=P.bed&&structAt(P.bed.tx,P.bed.ty);if(b&&b.k==='bed'){P.x=b.x;P.y=b.y+4;}else{P.bed=null;P.x=W.spawn.x;P.y=W.spawn.y;}
+  P.hp=maxHP();P.stam=maxStam();P.food=Math.max(P.food,60);P.water=Math.max(P.water,60);P.dead=false;P.hurtT=0;G.state='play';
+  for(const d of dinos)if(d.tg===P){d.tg=null;d.st='idle';d.rest=6;}
+  toast(G.bag?'You wake up. Your things are in a bag where you fell (red mark on the map, M).':'You wake up.','#ffe066',6);
+}
+const FIST={type:'fist',dmg:8,cd:.4,reach:34,pw:8,torp:6};
+function heldItem(){const id=P.hot[P.sel];return id&&has(id)?IT[id]:null;}
+function overUI(){return mouse.y>VH-40&&Math.abs(mouse.x-VW/2)<124;}
+function updatePlayer(dt){
+  const m=P.mount,inp=G.state==='play';
+  P.cd-=dt;P.swing-=dt;P.hurtT-=dt;P.slow-=dt;
+  const wx=mouse.x+cam.x,wy=mouse.y+cam.y;
+  if(inp){P.ang=Math.atan2(wy-(P.y-8),wx-P.x);const c=Math.cos(P.ang),s=Math.sin(P.ang);P.dir=Math.abs(c)>Math.abs(s)?(c<0?1:2):(s<0?3:0);}
+  let mx=inp?(K_('d')?1:0)-(K_('a')?1:0):0,my=inp?(K_('s')?1:0)-(K_('w')?1:0):0;const moving=mx||my;if(mx&&my){mx*=.707;my*=.707;}
+  const t=tileAtPx(P.x,P.y),deep=t===0&&!m,over=invWeight()>maxWeight();let sprint=false;
+  G.warn=[];
+  if(m){const S=SP[m.sp],sp=S.spd*1.15*(over?.4:1);
+    if(inp&&S.fly&&P_('space')){if(!m.air){m.air=true;Snd.play('squawk');toast('You take off! Press SPACE over land to come down.');}else if(t>=1){m.air=false;}else toast('You cannot land on deep water.');}
+    if(moving){moveEnt(m,mx*sp*dt,my*sp*dt,m.air?'f':'d');m.mv=true;if(mx)m.face=mx<0?-1:1;}
+    P.x=m.x;P.y=m.y;P.stam=Math.min(maxStam(),P.stam+12*dt);}
+  else{
+    sprint=K_('shift')&&moving&&P.stam>0&&!over;
+    const sp=110*(1+.025*P.st.speed)*(sprint?1.55:1)*(deep?.6:t===1?.82:1)*(over?.35:1)*(P.slow>0?.55:1);
+    if(moving){moveEnt(P,mx*sp*dt,my*sp*dt,'p');P.walk+=dt*(sprint?14:9);}
+    if(sprint)P.stam-=14*dt;else if(deep)P.stam-=6*dt;else P.stam=Math.min(maxStam(),P.stam+(moving?10:18)*dt);
+    if(P.stam<0)P.stam=0;
+    if(deep&&P.stam<=0){hurtPlayer(9*dt,true);G.warn.push('DROWNING! Swim to land');}
+    else if(deep)G.warn.push('Swimming (uses stamina)');
+  }
+  if(P.dead)return;
+  // hunger, thirst, cold
+  const fr=(1-.04*P.st.fort)*(sprint?1.6:1);P.food=Math.max(0,P.food-.2*dt*fr);P.water=Math.max(0,P.water-.27*dt*fr);
+  if(P.food<=0){hurtPlayer(2*dt,true);G.warn.push('STARVING! Eat something');}else if(P.food<25)G.warn.push('Hungry');
+  if(P.water<=0){hurtPlayer(2*dt,true);G.warn.push('DEHYDRATED! Drink water (E at the shore)');}else if(P.water<25)G.warn.push('Thirsty');
+  const held=heldItem(),warm=(P.armor&&IT[P.armor].warm)||nearStruct(['campfire','forge'],90)||(held&&held.tool&&held.tool.light);
+  if(t===7&&!warm){hurtPlayer(1.6*(1-.1*P.st.fort)*dt,true);G.warn.push('FREEZING! Wear Hide Armor or stand by a fire');}
+  if(over)G.warn.push('TOO HEAVY! Drop things in a Storage Box');
+  if(P.dead)return;
+  if(P.food>20&&P.water>20&&P.hurtT<=0)P.hp=Math.min(maxHP(),P.hp+.9*dt);
+  if(G.bag&&dist(P.x,P.y,G.bag.x,G.bag.y)<22){for(const k in G.bag.inv)addItem(k,G.bag.inv[k],true);G.bag=null;Snd.play('pick');toast('You got your things back.','#7dff8a');}
+  if(!inp)return;
+  for(let i=0;i<8;i++)if(P_(String(i+1)))P.sel=i;
+  if(mouse.wheel){P.sel=(P.sel+Math.sign(mouse.wheel)+8)%8;}
+  if(P_('e'))interact();if(P_('f'))quickRide();if(P_('x'))pickupStruct();
+  if(P_('y'))whistle('follow');if(P_('u'))whistle('stay');
+  const mt=P.mount;if(G.state!=='play')return;
+  G.place=!mt&&held&&held.st?held.id:null;
+  if(overUI()){if(mouse.click){const i=Math.floor((mouse.x-(VW/2-120))/30);if(i>=0&&i<8)P.sel=i;}return;}
+  if(mt){if(mouse.down&&P.cd<=0)mountAttack();}
+  else if(G.place){if(mouse.click)tryPlace();}
+  else if(held&&held.food){if(mouse.click)eat(held.id);}
+  else if(held&&held.tool&&held.tool.ranged){if(mouse.down&&P.cd<=0)shoot(held.tool);}
+  else if(mouse.down&&P.cd<=0)melee(held&&held.tool?held.tool:FIST);
+}
+function eat(id){const it=IT[id];if(!has(id))return;take(id);P.food=Math.min(maxFood(),P.food+it.food);if(it.water)P.water=Math.min(maxWater(),P.water+it.water);
+  if(it.hp){if(it.hp<0){hurtPlayer(-it.hp,true);toast('Raw meat makes you sick. Cook it at a campfire!','#ff8a8a');}else P.hp=Math.min(maxHP(),P.hp+it.hp);}
+  Snd.play('eat');G.flags.ate=1;}
+function melee(T){
+  P.cd=T.cd;P.swing=.16;Snd.play('swing');
+  const a=P.ang,dm=T.dmg*(1+.06*P.st.melee),py=P.y-8;let hit=false;
+  for(const d of dinos){if(d.dead||d.tamed)continue;const cy=d.y-d.r*.6,dd=dist(P.x,py,d.x,cy);if(dd>T.reach+d.r)continue;
+    if(Math.abs(angDiff(Math.atan2(cy-py,d.x-P.x),a))>1&&dd>d.r)continue;
+    hurtDino(d,dm,P,{torp:T.torp});hit=true;}
+  if(hit){Snd.play('hit');return;}
+  let best=null,bd=T.reach+14;
+  nodesNear(P.x,P.y,T.reach+30,n=>{if(n.k==='bush')return;const dd=dist(P.x,py,n.x,n.y-8);if(dd<bd&&(dd<16||Math.abs(angDiff(Math.atan2(n.y-8-py,n.x-P.x),a))<1.2)){bd=dd;best=n;}});
+  if(best)harvest(best,T);
+}
+function harvest(n,T){
+  const ty=T.type,tier=T.tier||1,got={},sayOnce=(k,s)=>{if(!G.flags[k]){G.flags[k]=1;toast(s,'#9fe0ff',5);}};
+  if(n.k==='tree'){if(ty==='hatchet'){got.wood=3;got.thatch=1;}else if(ty==='pick'){got.thatch=3;got.wood=1;}else if(ty==='dino'){got.wood=4;got.thatch=6;}else{got.thatch=1;if(Math.random()<.4)got.wood=1;}Snd.play('chop');burst(n.x,n.y-24,'#49a84f',4,70);}
+  else if(n.k==='rock'){if(ty==='hatchet')got.stone=3;else if(ty==='pick'){got.flint=2;got.stone=1;}else if(ty==='dino')got.stone=4;else if(ty==='fist'){got.stone=1;sayOnce('t_rock','Fists only get a little Stone. Craft a Pick (TAB) to get Flint too.');}else{sayOnce('t_rock2','Use a Pick or Hatchet on rocks.');return;}Snd.play('rock');burst(n.x,n.y-8,'#aaa59d',4,70);}
+  else if(n.k==='metal'){if(ty==='pick'){got.metal=2;got.stone=1;}else{sayOnce('t_metal','You need a Pick to mine Metal.');Snd.play('rock');return;}Snd.play('rock');burst(n.x,n.y-8,'#ffe27a',5,80);}
+  else if(n.k==='carcass'){let me=1,hi=Math.random()<.5?1:0;if(ty==='hatchet'){hi=2;me=1;}else if(ty==='pick'){me=2;hi=1;}else if(ty==='dino'){me=4;hi=2;}
+    me=Math.min(n.meat,me*tier);hi=Math.min(n.hide,hi*tier);n.meat-=me;n.hide-=hi;if(me)got.rawmeat=me;if(hi)got.hide=hi;Snd.play('hit');burst(n.x,n.y-6,'#e04a5a',4,60);
+    if(n.meat<=0&&n.hide<=0)n.hp=0;else n.hp=999;G.flags.meat=1;}
+  for(const k in got)addItem(k,got[k]*(n.k==='carcass'?1:tier));
+  n.sh=.15;if(n.k!=='carcass')n.hp-=T.pw;gainXP(1);
+  if(n.hp<=0){removeNode(n,true);burst(n.x,n.y-10,n.k==='tree'?'#6b4423':'#8f8a84',12,110);}
+}
+function gatherBush(n,mult){
+  addItem('berry',rndi(3,5)*mult);addItem('fiber',rndi(2,4)*mult);if(Math.random()<.4||mult>1)addItem('narco',rndi(1,2)*mult);
+  n.hp-=mult>1?3:1;n.sh=.2;Snd.play('pick');gainXP(1);G.flags.bush=1;burst(n.x,n.y-8,'#49a84f',5,60);if(n.hp<=0)removeNode(n,true);
+}
+function shoot(T){
+  let ammo=T.ranged,dmg=T.dmg,torp=T.torp||0;
+  if(ammo==='arrow'){if(has('tranq')){ammo='tranq';dmg=12;torp=80;}else if(!has('arrow')){toast('No arrows. Craft some (TAB).');P.cd=.5;return;}}
+  else if(!has('stone')){toast('The slingshot needs Stones.');P.cd=.5;return;}
+  take(ammo);P.cd=T.cd;P.swing=.12;Snd.play('shoot');
+  projs.push({x:P.x,y:P.y-10,vx:Math.cos(P.ang)*T.spd,vy:Math.sin(P.ang)*T.spd,life:1.1,dmg:dmg*(1+.03*P.st.melee),torp,own:'p',kind:ammo});
+}
+function mountAttack(){
+  const m=P.mount,S=SP[m.sp],a=P.ang,cy=m.y-m.r*.6;P.cd=.7;m.bite=.2;m.face=Math.cos(a)<0?-1:1;Snd.play('swing');let hit=false;
+  for(const d of dinos){if(d.dead||d.tamed)continue;const dy=d.y-d.r*.6,dd=dist(m.x,cy,d.x,dy);if(dd>m.r+d.r+30)continue;if(Math.abs(angDiff(Math.atan2(dy-cy,d.x-m.x),a))>1.1&&dd>m.r+d.r)continue;hurtDino(d,m.dmg,m);hit=true;}
+  if(hit){Snd.play('hit');return;}
+  let best=null,bd=m.r+44;nodesNear(m.x,m.y,m.r+60,n=>{if(S.diet==='c'&&n.k!=='carcass')return;const dd=dist(m.x,cy,n.x,n.y-8);if(dd<bd){bd=dd;best=n;}});
+  if(best){if(best.k==='bush')gatherBush(best,3);else harvest(best,{type:'dino',pw:45});}
+}
+// ---- interaction ----
+function findInteract(){
+  if(P.mount)return {kind:'dismount',label:'E / F: get off   ·   Click: bite'+(SP[P.mount.sp].fly?'   ·   SPACE: fly / land':'')};
+  let best=null,bd=1e9,kind='';const c=(k,o,d,max)=>{if(d<max&&d<bd){bd=d;best=o;kind=k;}};
+  for(const s of W.sites)if(!s.taken)c('site',s,dist(P.x,P.y,s.x,s.y)-100,-56);
+  c('ob',W.ob,dist(P.x,P.y,W.ob.x,W.ob.y)-100,-36);
+  if(!best)for(const d of dinos){if(d.dead)continue;const dd=dist(P.x,P.y-8,d.x,d.y-d.r*.6)-d.r;if(d.ko&&!d.tamed)c('ko',d,dd-20,14);else if(d.tamed)c('tame',d,dd,30);}
+  if(!best||kind==='tame'){for(const s of W.structs)c('st',s,dist(P.x,P.y,s.x,s.y)-8,30);
+    nodesNear(P.x,P.y,50,n=>{if(n.k==='bush')c('bush',n,dist(P.x,P.y,n.x,n.y-4),34);});}
+  if(!best)return nearWater()?{kind:'water',label:'E: drink'}:null;
+  const L={ko:'E: tame this '+(best.sp?SP[best.sp].n:''),tame:'E: '+(best.name||'')+(best.saddle?'   ·   F: ride':''),bush:'E: gather berries',site:'E: take the Artifact',ob:'E: touch the Obelisk'};
+  let label=L[kind];
+  if(kind==='st')label={campfire:'E: cook   ·   X: pick up',forge:'E: use the forge   ·   X: pick up',chest:'E: open   ·   X: pick up',bed:'E: sleep here (save + set wake-up spot)   ·   X: pick up'}[best.k]||'X: pick up';
+  return {kind,o:best,label};
+}
+function interact(){
+  const f=findInteract();if(!f)return;const o=f.o;
+  switch(f.kind){
+    case'dismount':dismount();break;
+    case'water':P.water=Math.min(maxWater(),P.water+25);Snd.play('drink');G.flags.drank=1;addText(P.x,P.y-34,'+water','#9fe0ff');break;
+    case'bush':gatherBush(o,1);break;
+    case'ko':G.pd=o;G.state='tame';Snd.play('ui');break;
+    case'tame':G.pd=o;G.state='dino';Snd.play('ui');break;
+    case'st':if(o.k==='chest'){G.chest=o;o.inv=o.inv||{};G.state='chest';Snd.play('ui');}
+      else if(o.k==='bed'){P.bed={tx:o.tx,ty:o.ty};saveGame();Snd.play('craft');toast('You will wake up here if you die. Game saved.','#7dff8a');}
+      else if(o.k==='campfire'||o.k==='forge'){G.state='inv';G.scroll=0;Snd.play('ui');}break;
+    case'site':if(dinos.some(d=>d.site===o.i&&!d.dead)){toast('The Alpha guards the Artifact. Defeat it first!','#ff8a8a');Snd.play('fail');}
+      else{o.taken=true;addItem('art'+(o.i+1),1);Snd.play('tame');burst(o.x,o.y-10,'#fff',30,150);toast('You found the '+IT['art'+(o.i+1)].n+'!','#ffe066',6);saveGame();}break;
+    case'ob':{const n=[1,2,3].filter(i=>has('art'+i)).length;
+      if(G.won)toast('The Obelisk hums quietly. The island is at peace.');
+      else if(dinos.some(d=>d.sp==='titan'&&!d.dead))toast('The Titan is here. FIGHT!','#ff8a8a');
+      else if(n<3)toast('The Obelisk needs three Artifacts. You carry '+n+'. (Press M: orange marks show where they are.)','#c9a8ff',6);
+      else{[1,2,3].forEach(i=>take('art'+i));const b=mkDino('titan',W.ob.x,W.ob.y-110,30,{boss:true});b.tg=P;b.st='chase';b.b1=4;b.b2=10;Snd.play('roar');shake(12);
+        toast('The Artifacts melt into the Obelisk... THE TITAN AWAKENS!','#ff5a5a',7);}break;}
+  }
+}
+function quickRide(){
+  if(P.mount){dismount();return;}
+  let best=null,bd=46;for(const d of dinos){if(!d.tamed||d.dead||!d.saddle)continue;const dd=dist(P.x,P.y,d.x,d.y)-d.r;if(dd<bd){bd=dd;best=d;}}
+  if(best)ride(best);else toast('Stand next to one of your dinosaurs that wears a saddle.');
+}
+function ride(d){P.mount=d;d.tg=null;d.air=false;P.x=d.x;P.y=d.y;G.state='play';Snd.play('roar');G.flags.rode=1;toast('Riding '+d.name+'!  Click: bite   F: get off'+(SP[d.sp].fly?'   SPACE: fly':''),'#7dff8a');}
+function dismount(){const d=P.mount;if(!d)return;if(d.air){if(tileAtPx(d.x,d.y)<1){toast('Land first (SPACE over land).');return;}d.air=false;}
+  P.mount=null;for(const o of [[0,d.r+12],[d.r+12,0],[-d.r-12,0],[0,-d.r-12],[0,0]])if(!blockedAt(d.x+o[0],d.y+o[1],P.cr,'p')){P.x=d.x+o[0];P.y=d.y+o[1];break;}}
+function whistle(mode){let n=0;for(const d of dinos)if(d.tamed&&!d.dead&&d!==P.mount){d.mode=mode;n++;}Snd.play('squawk');toast(n?(mode==='follow'?'You whistle: everyone FOLLOW!':'You whistle: everyone STAY!'):'You have no tamed dinosaurs yet.');}
+function pickupStruct(){
+  let best=null,bd=40;for(const s of W.structs){const dd=dist(P.x,P.y,s.x,s.y);if(dd<bd){bd=dd;best=s;}}if(!best)return;
+  if(best.inv)for(const k in best.inv)addItem(k,best.inv[k],true);removeStruct(best);addItem(best.k,1);Snd.play('pick');
+}
+function placeSpot(){
+  const tx=Math.floor((mouse.x+cam.x)/TS),ty=Math.floor((mouse.y+cam.y)/TS),x=tx*TS+16,y=ty*TS+16,t=tileAt(tx,ty);
+  let ok=t>=2&&!structAt(tx,ty)&&dist(P.x,P.y,x,y)<120&&(G.place==='bed'||dist(P.x,P.y,x,y)>20);
+  if(ok)nodesNear(x,y,30,n=>{if(Math.abs(n.x-x)<18&&Math.abs(n.y-6-y)<18)ok=false;});
+  if(ok&&dist(x,y,W.ob.x,W.ob.y)<70)ok=false;
+  return {tx,ty,x,y,ok};
+}
+function tryPlace(){const s=placeSpot(),id=G.place;if(!s.ok){Snd.play('fail');toast('You cannot build there. Pick a free spot close to you.');return;}
+  take(id);addStruct(id,s.tx,s.ty);Snd.play('place');burst(s.x,s.y,'#c9a36b',10,80);gainXP(3);G.flags['placed_'+id]=1;}
+function canCraft(r){for(const k in r.cost)if(!has(k,r.cost[k]))return false;return true;}
+function stationOK(r){return !r.st||nearStruct([r.st==='fire'?'campfire':'forge'],90);}
+function craft(r){
+  if(P.lvl<r.lvl){toast('You need level '+r.lvl+' for that.');Snd.play('fail');return false;}
+  if(!stationOK(r)){toast(r.st==='fire'?'Stand next to a Campfire to cook.':'Stand next to a Forge to make that.');Snd.play('fail');return false;}
+  if(!canCraft(r)){Snd.play('fail');return false;}
+  for(const k in r.cost)take(k,r.cost[k]);addItem(r.id,r.n||1,true);Snd.play('craft');gainXP(2+r.lvl);
+  if(r.id==='meat')G.flags.cooked=1;return true;
+}
+
+// ============================ DINOSAURS ===============================
+function mkDino(sp,x,y,lvl,o){
+  const S=SP[sp],al=o&&o.alpha,r=S.sh.b[0]*S.sc*.9*(al?1.35:1)*.5;
+  const d=Object.assign({sp,x,y,lvl,r,cr:Math.min(r,13),face:Math.random()<.5?1:-1,mhp:Math.round(S.hp*(1+.07*(lvl-1))*(al?4:1)),dmg:Math.round(S.dmg*(1+.025*(lvl-1))*(al?1.7:1)),
+    mtorp:S.torp*(1+.04*(lvl-1)),torp:0,ko:false,tame:0,stock:0,eatT:0,tamed:false,st:'idle',t:rnd(1,3),tg:null,atk:0,wind:0,scan:rnd(.5),rest:0,flash:0,seed:rnd(10),mv:false,wx:null,wy:0,txp:0,stuck:0},o||{});
+  d.hp=d.mhp;dinos.push(d);return d;
+}
+function hurtDino(d,dmg,src,o){
+  o=o||{};if(d.dead)return;d.hp-=dmg;d.flash=.12;d.showT=6;addText(d.x+rnd(-6,6),d.y-d.r*2-10,Math.max(1,Math.round(dmg)),d.tamed?'#ff8a8a':'#fff');
+  if(o.torp&&!d.ko&&!d.boss&&!d.alpha&&!d.tamed)d.torp+=o.torp;
+  if(d.ko&&!d.tamed)d.tame=Math.max(0,d.tame-.04);
+  const mine=src===P||(src&&src.tamed);
+  if(src===P){P.lastHit=d;P.lastHitT=gt;}
+  if(mine&&!d.tamed&&!d.ko){if(SP[d.sp].ag===0){d.st='flee';d.t=6;d.tg=src;}else{d.tg=src===P?(P.mount||P):src;d.st='chase';d.t=14;}}
+  else if(d.tamed&&src&&src!==P&&!d.tg&&d!==P.mount)d.tg=src;
+  if(d.hp<=0){killDino(d,src);return;}
+  if(!d.ko&&d.torp>=d.mtorp){d.ko=true;d.mv=false;d.tg=null;d.wind=0;d.tame=0;d.stock=0;d.eatT=2.5;Snd.play('ko');G.flags.ko=1;
+    toast(SP[d.sp].n+' is knocked out! Press E next to it and feed it '+(SP[d.sp].diet==='h'?'Berries':'Raw Meat')+' to tame it.','#c9a8ff',6);}
+}
+function killDino(d,src){
+  const S=SP[d.sp];d.dead=true;burst(d.x,d.y-d.r,'#e0412e',14,120);
+  if(d===P.mount){P.mount=null;d.air=false;}
+  if(d.tamed)toast(d.name+' the '+S.n+' has died.','#ff8a8a',6);
+  const k=d.alpha?3:1;if(S.meat||S.hide)addNode('carcass',d.x,d.y,0,{meat:S.meat*k,hide:S.hide*k,t:120,dino:{sp:d.sp,face:d.face,ko:true,flash:0,seed:0,alpha:d.alpha,mv:false}});
+  const mine=src===P||(src&&src.tamed);
+  if(mine){gainXP(Math.round(S.xp*(1+.05*d.lvl)*(d.alpha?4:1)));G.flags.kill=1;
+    if(src!==P){src.txp+=S.xp;while(src.txp>=40*src.lvl){src.txp-=40*src.lvl;src.lvl++;src.mhp=Math.round(src.mhp*1.05);src.dmg=Math.round(src.dmg*1.04)+1;src.hp=Math.min(src.mhp,src.hp+src.mhp*.2);toast(src.name+' grew to level '+src.lvl+'!','#7dff8a');}}}
+  if(d.site!=null){W.sites[d.site].cleared=true;toast('The Alpha is dead! Take the Artifact from the pedestal (E).','#ffe066',6);Snd.play('level');}
+  if(d.sp==='titan'){G.won=true;G.state='win';Snd.play('tame');shake(14);for(const o of dinos)if(!o.tamed&&o!==d){o.tg=null;o.st='flee';o.t=8;}addItem('ingot',40,true);addItem('hide',80,true);saveGame();}
+}
+function tameDone(d){
+  const S=SP[d.sp];d.tamed=true;d.ko=false;d.torp=0;d.mhp=Math.round(d.mhp*1.25);d.hp=d.mhp;d.mode='follow';d.tg=null;d.st='idle';d.stock=0;
+  d.name=pick(DNAMES.filter(n=>!dinos.some(o=>o.tamed&&o.name===n)).concat(DNAMES.slice(0,1)));
+  gainXP(S.xp*2);Snd.play('tame');burst(d.x,d.y-d.r,'#ffe066',36,160);G.flags.tamed=1;if(G.pd===d&&G.state==='tame')G.state='dino';
+  toast('You tamed a '+S.n+'! Its name is '+d.name+'.'+(S.ride?'  Craft a '+IT[S.ride].n+' to ride it.':''),'#7dff8a',7);saveGame();
+}
+function go(d,x,y,dt,mode,sp){const q=norm(x-d.x,y-d.y);if(Math.abs(q.x)>.2)d.face=q.x<0?-1:1;d.mv=true;return moveEnt(d,q.x*sp*dt,q.y*sp*dt,mode);}
+function dinoHit(d,tg){if(tg===P)hurtPlayer(d.dmg,false,d);else hurtDino(tg,d.dmg,d);Snd.play('hit');}
+function chase(d,tg,dt,mode,sp){
+  const S=SP[d.sp],tyy=tg.y,dd=dist(d.x,d.y,tg.x,tyy),reach=d.r+(tg.r||8)+8;
+  if(d.wind>0){d.wind-=dt;if(d.wind<=0){if(dist(d.x,d.y,tg.x,tg.y)<reach+16)dinoHit(d,tg);d.atk=d.boss?1.4:1.1;}return;}
+  if(S.spit&&tg===P&&dd<230&&dd>80&&d.atk<=0){const q=norm(tg.x-d.x,tg.y-8-(d.y-d.r));projs.push({x:d.x,y:d.y-d.r,vx:q.x*230,vy:q.y*230,life:1.3,dmg:d.dmg,own:'d',kind:'spit'});d.atk=2.4;Snd.play('squawk');return;}
+  if(dd<reach){if(d.atk<=0){d.wind=.38;d.face=tg.x<d.x?-1:1;}return;}
+  if(go(d,tg.x,tyy,dt,mode,sp)){d.stuck=0;return;}
+  d.stuck+=dt;if(d.stuck<.5)return;d.stuck=0;
+  const q=norm(tg.x-d.x,tyy-d.y);let s=null;
+  for(const o of [[q.x,q.y],[q.x,0],[0,q.y]]){s=structAt(Math.floor((d.x+o[0]*(d.cr+14))/TS),Math.floor((d.y+o[1]*(d.cr+14))/TS));if(s)break;}
+  if(s){s.hp-=d.dmg;s.sh=.15;Snd.play('chop');burst(s.x,s.y,'#c9a36b',5,70);if(s.k==='spikes')hurtDino(d,20,null);
+    if(s.hp<=0){removeStruct(s);burst(s.x,s.y,'#6b4423',16,120);toast('A '+SP[d.sp].n+' destroyed your '+IT[s.k].n+'!','#ff8a8a');}}
+  else{const sd=Math.random()<.5?1:-1;moveEnt(d,-q.y*sd*16,q.x*sd*16,mode);}
+}
+function updateDino(d,dt){
+  const S=SP[d.sp];d.flash-=dt;d.atk-=dt;d.mv=false;d.showT=(d.showT||0)-dt;if(d.bite>0)d.bite-=dt;
+  if(d===P.mount)return;
+  if(d.ko){
+    d.torp-=(.35+S.torp/260)*dt;
+    if(d.stock>0){d.eatT-=dt;if(d.eatT<=0){d.eatT=2.5;d.stock--;d.tame+=1/S.food;addText(d.x,d.y-d.r*2-6,'nom','#ffe066');if(d.tame>=.999){tameDone(d);return;}}}
+    if(d.torp<=0){d.ko=false;d.torp=0;d.tame=0;d.stock=0;Snd.play('roar');toast('The '+S.n+' woke up before it was tamed!','#ff8a8a');if(G.pd===d&&G.state==='tame')G.state='play';
+      if(S.ag===0){d.st='flee';d.t=6;d.tg=P;}else{d.tg=P;d.st='chase';d.t=12;}}
+    return;}
+  if(d.torp>0)d.torp=Math.max(0,d.torp-1.5*dt);
+  const mode=S.swim?'s':S.fly&&!d.tamed?'f':'d';
+  let tg=d.tg;if(tg===P&&P.mount)tg=d.tg=P.mount;
+  if(tg&&(tg.dead||(tg!==P&&tg.ko)||dist(d.x,d.y,tg.x,tg.y)>(d.boss?2000:560))){tg=d.tg=null;if(!d.tamed)d.st='idle';}
+  if(d.tamed){
+    if(!tg){d.scan-=dt;if(d.scan<=0){d.scan=.4;let b=null,bd=270;
+      for(const o of dinos){if(o.dead||o.tamed||o.ko)continue;const hostile=o.tg===P||(o.tg&&o.tg.tamed)||(P.lastHit===o&&gt-P.lastHitT<6);if(!hostile)continue;const dd=dist(d.x,d.y,o.x,o.y);if(dd<bd){bd=dd;b=o;}}
+      tg=d.tg=b;}}
+    if(tg)chase(d,tg,dt,mode,S.spd*1.1);
+    else if(d.mode==='follow'){const dd=dist(d.x,d.y,P.x,P.y);
+      if(dd>1300){const x=P.x+rnd(-70,70),y=P.y+rnd(-70,70);if(!blockedAt(x,y,d.cr,'d')){d.x=x;d.y=y;}}
+      else if(dd>54+d.r)go(d,P.x,P.y,dt,mode,dd>200?Math.max(S.spd*1.3,P.mount?SP[P.mount.sp].spd*1.2:0):Math.min(S.spd,125));}
+    if(d.hp<d.mhp)d.hp=Math.min(d.mhp,d.hp+d.mhp*.004*dt);
+    return;}
+  if(d.boss){d.b1-=dt;d.b2-=dt;
+    if(d.b1<=0){d.b1=6;hazards.push({x:d.x,y:d.y,r:125,t:1.1,T:1.1,dmg:45});Snd.play('roar');}
+    if(d.b2<=0){d.b2=16;for(let i=0;i<2;i++){const m=mkDino('raptor',d.x+rnd(-80,80),d.y+rnd(-80,80),15);m.tg=P;m.st='chase';m.t=30;}toast('The Titan roars — raptors answer!','#ff8a8a');}}
+  switch(d.st){
+    case'flee':{d.t-=dt;const s=d.tg||P;go(d,d.x+(d.x-s.x),d.y+(d.y-s.y),dt,mode,S.spd*1.15);if(d.t<=0){d.st='idle';d.tg=null;}break;}
+    case'chase':if(!tg){d.st='idle';break;}d.t-=dt;
+      if(S.swim&&tileAtPx(P.x,P.y)>1){d.tg=null;d.st='idle';break;}
+      if(d.t<=0&&!d.boss&&!d.alpha){d.tg=null;d.st='idle';d.rest=5;break;}
+      chase(d,tg,dt,mode,S.spd);break;
+    default:{
+      d.rest-=dt;const dp=dist(d.x,d.y,P.x,P.y);
+      if(S.ag===2&&d.rest<=0){d.scan-=dt;if(d.scan<=0){d.scan=.5;const sight=(S.sight||200)*(isNight()?1.15:1);let b=null,bd=sight;
+        if(!P.dead&&dp<sight&&(!S.swim||tileAtPx(P.x,P.y)<=1)){b=P;bd=dp;}
+        if(!S.swim)for(const o of dinos){if(!o.tamed||o.dead)continue;const dd=dist(d.x,d.y,o.x,o.y);if(dd<bd*.8){bd=dd;b=o;}}
+        if(b){d.tg=b;d.st='chase';d.t=11;if(S.sc>2.2&&dp<500)Snd.play('roar');break;}}}
+      if(S.ag===0&&(d.sp==='para'||d.sp==='ptera')&&dp<75&&!P.dead){d.st='flee';d.t=2.5;d.tg=P;break;}
+      d.t-=dt;if(d.t<=0){d.t=rnd(2,6);if(Math.random()<.65){const a=rnd(6.283),l=rnd(40,150);d.wx=d.x+Math.cos(a)*l;d.wy=d.y+Math.sin(a)*l;}else d.wx=null;}
+      if(d.wx!==null){if(dist(d.x,d.y,d.wx,d.wy)<8||!go(d,d.wx,d.wy,dt,mode,S.spd*(S.fly?.6:.33)))d.wx=null;}
+    }
+  }
+}
+function spawnTick(dt){
+  G.spT-=dt;if(G.spT>0)return;G.spT=.5;
+  for(const d of dinos)if(!d.tamed&&!d.ko&&!d.boss&&!d.dead&&dist(d.x,d.y,P.x,P.y)>1500){d.dead=true;if(d.site!=null&&!W.sites[d.site].cleared)W.sites[d.site].spawned=false;}
+  for(const s of W.sites)if(!s.cleared&&!s.spawned&&dist(P.x,P.y,s.x,s.y)<560){s.spawned=true;
+    mkDino(s.alpha,s.x+34,s.y+10,22+s.i*4,{alpha:true,site:s.i});for(let i=0;i<2;i++)mkDino(s.alpha,s.x+rnd(-90,90),s.y+rnd(-90,90),10+s.i*3);}
+  if(dinos.filter(d=>!d.tamed&&!d.dead).length>=44)return;
+  for(let tries=0;tries<3;tries++){
+    const a=rnd(6.283),rr=rnd(Math.hypot(VW,VH)*.5+70,1000),x=P.x+Math.cos(a)*rr,y=P.y+Math.sin(a)*rr;if(x<40||y<40||x>WORLD-40||y>WORLD-40)continue;
+    const tb=SPAWN[tileAtPx(x,y)];if(!tb)continue;
+    let tot=0;for(const q of tb)tot+=q[1];let r=rnd(tot),sp=tb[0][0];for(const q of tb){r-=q[1];if(r<=0){sp=q[0];break;}}
+    const S=SP[sp],ds=dist(x,y,W.spawn.x,W.spawn.y);
+    if(ds<750&&S.ag===2&&sp!=='dilo'&&sp!=='piranha')continue; // the starting beach is (fairly) safe
+    if(W.structs.some(s=>dist(x,y,s.x,s.y)<260))continue;
+    const n=sp==='raptor'||sp==='dodo'?rndi(1,3):1,lvl=clamp(1+Math.floor(Math.random()*Math.random()*10)+Math.floor(ds/500)*2,1,30);
+    for(let i=0;i<n;i++){const px=x+rnd(-40,40)*i,py=y+rnd(-40,40)*i;if(!blockedAt(px,py,10,S.swim?'s':S.fly?'f':'d'))mkDino(sp,px,py,lvl);}
+    return;}
+}
+function updateWorld(dt){
+  G.time+=dt/DAYLEN;if(G.time>=1){G.time-=1;G.day++;toast('Day '+G.day+' begins.','#ffe9a0');}
+  spawnTick(dt);
+  for(const d of dinos){if(!d.dead)updateDino(d,dt);if(P.dead)break;}
+  dinos=dinos.filter(d=>!d.dead);
+  if(P.mount){P.x=P.mount.x;P.y=P.mount.y;}
+  // projectiles
+  for(const p of projs){p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
+    if(p.own==='p'){for(const d of dinos){if(d.dead||d.tamed)continue;if(dist(p.x,p.y,d.x,d.y-d.r*.6)<d.r+5){hurtDino(d,p.dmg,P,{torp:p.torp});Snd.play('hit');p.life=0;break;}}
+      if(p.life>0){const s=structAt(Math.floor(p.x/TS),Math.floor(p.y/TS));if(s&&SOLIDST[s.k]===1)p.life=0;}}
+    else if(!P.dead&&dist(p.x,p.y,P.x,P.y-8)<12){hurtPlayer(p.dmg,false,null);if(!P.mount){P.slow=2;}p.life=0;}}
+  projs=projs.filter(p=>p.life>0);
+  for(const h of hazards){h.t-=dt;if(h.t<=0){Snd.play('boom');shake(8);burst(h.x,h.y,'#c9a8ff',30,220);
+    if(dist(h.x,h.y,P.x,P.y)<h.r)hurtPlayer(h.dmg,false,null);for(const d of dinos)if(d.tamed&&d!==P.mount&&dist(h.x,h.y,d.x,d.y)<h.r)hurtDino(d,h.dmg,null);}}
+  hazards=hazards.filter(h=>h.t>0);
+  // regrowth and old carcasses
+  G.slowT-=dt;if(G.slowT<=0){G.slowT=1;
+    for(const r of W.regrow){r.t-=1;if(r.t<=0&&dist(r.n.x,r.n.y,P.x,P.y)>520&&!structAt(Math.floor(r.n.x/TS),Math.floor(r.n.y/TS))){r.n.hp=NODE[r.n.k].hp;chunkOf(r.n.x,r.n.y).push(r.n);r.done=1;}}
+    W.regrow=W.regrow.filter(r=>!r.done);
+    nodesNear(P.x,P.y,1400,n=>{if(n.k==='carcass'){n.t-=1;if(n.t<=0)removeNode(n,false);}});
+    guideTick();
+    const boss=dinos.some(d=>d.boss),danger=boss||dinos.some(d=>!d.tamed&&(d.tg===P||d.tg===P.mount)&&SP[d.sp].ag===2&&dist(d.x,d.y,P.x,P.y)<400);
+    Music.set(danger?'danger':isNight()?'night':'day');}
+  G.saveT-=dt;if(G.saveT<=0){G.saveT=45;saveGame();}
+}
+// ---- survivor's guide (the tutorial) ----
+const GUIDE=[
+  ['Punch a tree: stand next to it, aim with the mouse and hold LEFT CLICK. Get 10 Thatch and some Wood.',()=>has('thatch',10)&&has('wood',1)],
+  ['Press E next to a berry bush for Berries and Fiber. To eat, choose the berries on the bar below (keys 1-8) and click.',()=>G.flags.bush],
+  ['Punch a rock to get a Stone. Then press TAB and craft a Stone Pick.',()=>has('pick')||has('mpick')],
+  ['Hit rocks with the Pick to get Flint. Chop and gather until level 2, then craft a Stone Hatchet (TAB).',()=>has('hatchet')||has('mhatchet')],
+  ['Thirsty? Stand in or next to water and press E to drink.',()=>G.flags.drank],
+  ['Craft a Spear and hunt a Dodo (the small round birds on the beach). Then hit the body with your Hatchet for Hide and Raw Meat.',()=>G.flags.meat],
+  ['Craft a Campfire, choose it on the bar and click the ground to place it. Stand next to it, press TAB and cook your meat.',()=>G.flags.cooked],
+  ['Time to tame! Craft a Wooden Club (level 3). Hit a Dodo or Parasaur until it falls asleep, press E on it and feed it Berries.',()=>G.flags.tamed],
+  ['Craft a Sleeping Mat (level 4), place it and press E on it. If you die, you wake up there.',()=>!!P.bed],
+  ['Tame a dinosaur you can ride (Parasaur, Raptor, Trike...). Craft its saddle, press E on your dinosaur to put it on, then F to ride.',()=>G.flags.rode],
+  ['Three Artifacts are hidden on the island, each guarded by an ALPHA. Press M for the map (orange marks). Bring strong dinosaurs!',()=>W.sites.every(s=>s.taken)],
+  ['Carry all three Artifacts to the Obelisk in the middle of the island (purple mark on the map) and press E. Be ready for a fight.',()=>G.won],
+  ['You beat the Titan! The island is yours. Keep taming, building and exploring.',()=>false]];
+function guideTick(){while(G.g<GUIDE.length-1&&GUIDE[G.g][1]()){G.g++;Snd.play('craft');toast('Guide step done!  Next: step '+(G.g+1),'#7dff8a');gainXP(8);}}
+// ============================ UI HELPERS ==============================
+function tx(s,x,y,c,sz,al){ctx.font='bold '+(sz||10)+'px "Courier New",monospace';ctx.textAlign=al||'left';ctx.textBaseline='top';ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillText(s,x+1,y+1);ctx.fillStyle=c||'#fff';ctx.fillText(s,x,y);}
+function tw(s,sz){ctx.font='bold '+(sz||10)+'px "Courier New",monospace';return ctx.measureText(s).width;}
+function wrap(s,maxW,sz){ctx.font='bold '+(sz||10)+'px "Courier New",monospace';const out=[];let line='';for(const w of String(s).split(' ')){const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){out.push(line);line=w;}else line=t;}if(line)out.push(line);return out;}
+function panel(x,y,w,h,a){ctx.fillStyle='rgba(16,20,18,'+(a||.93)+')';ctx.fillRect(x,y,w,h);ctx.fillStyle='#d8c890';ctx.fillRect(x,y,w,2);ctx.fillRect(x,y+h-2,w,2);ctx.fillRect(x,y,2,h);ctx.fillRect(x+w-2,y,2,h);}
+function bar(x,y,w,h,f,c,bg){ctx.fillStyle='#000';ctx.fillRect(x-1,y-1,w+2,h+2);ctx.fillStyle=bg||'#333';ctx.fillRect(x,y,w,h);ctx.fillStyle=c;ctx.fillRect(x,y,Math.round(w*clamp(f,0,1)),h);}
+const hover=(x,y,w,h)=>mouse.x>=x&&mouse.x<x+w&&mouse.y>=y&&mouse.y<y+h;
+function btn(x,y,w,h,label,en,col){en=en!==false;const hv=en&&hover(x,y,w,h);R(ctx,hv?'#5a6a3a':'#2c3626',x,y,w,h);R(ctx,en?'#d8c890':'#555',x,y,w,1);R(ctx,en?'#d8c890':'#555',x,y+h-1,w,1);R(ctx,en?'#d8c890':'#555',x,y,1,h);R(ctx,en?'#d8c890':'#555',x+w-1,y,1,h);
+  tx(label,x+w/2,y+Math.floor((h-10)/2),en?(col||'#fff'):'#777',10,'center');if(hv&&mouse.click){mouse.click=false;Snd.play('ui');return true;}return false;}
+function slot(x,y,id,n,sel){R(ctx,sel?'#6a7a3a':'#1c2420',x,y,26,26);R(ctx,sel?'#ffe066':'#5a6450',x,y,26,1);R(ctx,sel?'#ffe066':'#5a6450',x,y+25,26,1);R(ctx,sel?'#ffe066':'#5a6450',x,y,1,26);R(ctx,sel?'#ffe066':'#5a6450',x+25,y,1,26);
+  if(id){drawIcon(ctx,id,x+5,y+4);if(n>1)tx(n>999?Math.floor(n/100)/10+'k':String(n),x+25,y+16,'#fff',9,'right');}}
+function overlay(a){ctx.fillStyle='rgba(6,10,8,'+a+')';ctx.fillRect(0,0,VW,VH);}
+
+// ============================ WORLD RENDER ============================
+let lightCv=null;
+function drawNode(g,n){
+  let sx=0;if(n.sh>0){n.sh-=.016;sx=Math.sin(gt*70)*2;}
+  if(n.k==='tree')g.drawImage(SPR.tree[n.v],Math.round(n.x-24+sx),Math.round(n.y-60));
+  else if(n.k==='rock')g.drawImage(SPR.rock,Math.round(n.x-17+sx),Math.round(n.y-22));
+  else if(n.k==='metal')g.drawImage(SPR.metal,Math.round(n.x-17+sx),Math.round(n.y-22));
+  else if(n.k==='bush')g.drawImage(SPR.bush,Math.round(n.x-15+sx),Math.round(n.y-20));
+  else{g.globalAlpha=n.t<15?.4:.8;drawDino(g,n.dino,n.x+sx,n.y,0);g.globalAlpha=1;}
+}
+function drawStruct(g,s){
+  const x=s.tx*TS,y=s.ty*TS,o=s.sh>0?(s.sh-=.016,Math.sin(gt*70)*2):0;
+  switch(s.k){
+    case'campfire':{const f=Math.floor(gt*8)%2;R(g,'#5a3a20',x+6,y+20,20,5);R(g,'#3d2715',x+10,y+23,12,4);R(g,'#8f8a84',x+4,y+24,4,4);R(g,'#8f8a84',x+24,y+24,4,4);R(g,'#ff7b2e',x+10,y+8+f*2,12,14-f*2);R(g,'#ffc83a',x+12,y+12+f*2,8,9-f*2);R(g,'#fff1a8',x+14,y+16,4,4);break;}
+    case'bed':R(g,'#8a5a2a',x+3,y+6,26,22);R(g,'#d9c070',x+5,y+8,22,18);R(g,'#e8e0c8',x+5,y+8,22,6);R(g,'#b8a050',x+5,y+18,22,2);break;
+    case'chest':R(g,'#7a5230',x+4+o,y+8,24,20);R(g,'#94683f',x+6+o,y+10,20,7);R(g,'#5a3a20',x+4+o,y+18,24,2);R(g,'#ffd84a',x+14+o,y+16,4,6);break;
+    case'wall':R(g,'#6b4423',x+o,y-8,32,40);for(let i=0;i<4;i++)R(g,i%2?'#8a5a2a':'#94683f',x+1+i*8+o,y-7,7,38);R(g,'#5a3a20',x+o,y+2,32,2);R(g,'#5a3a20',x+o,y+20,32,2);break;
+    case'door':R(g,'#6b4423',x+o,y-8,32,40);R(g,'#b07a45',x+5+o,y-3,22,35);R(g,'#94683f',x+7+o,y-1,18,33);R(g,'#ffd84a',x+21+o,y+14,3,4);break;
+    case'spikes':R(g,'#6b4423',x+o,y+18,32,8);for(let i=0;i<4;i++){R(g,'#c9a36b',x+2+i*8+o,y-2+(i%2)*4,4,22);R(g,'#f4ecd8',x+2+i*8+o,y-5+(i%2)*4,4,4);}break;
+    case'forge':R(g,'#5f5a56',x+2+o,y-4,28,34);R(g,'#8f8a84',x+2+o,y-4,28,5);R(g,'#2a2826',x+8+o,y+10,16,16);R(g,Math.floor(gt*6)%2?'#ff7b2e':'#ffb347',x+10+o,y+16,12,9);R(g,'#4d4946',x+12+o,y-14,8,10);break;
+  }
+}
+function drawPlayerSprite(g){
+  if(P.dead)return;const held=heldItem(),T=held&&held.tool;
+  if(P.hurtT>4.6&&Math.floor(gt*20)%2)return;
+  g.fillStyle='rgba(0,0,0,.25)';g.fillRect(P.x-8,P.y-2,16,5);
+  const sw=P.swing>0?(1-P.swing/.16):0,a=P.ang+(T&&!T.ranged&&P.swing>0?-0.9+sw*1.8:P.swing>0?-0.7+sw*1.4:0);
+  const tool=()=>{if(!T&&P.swing<=0)return;g.save();g.translate(P.x,P.y-12);g.rotate(a);
+    if(!T){R(g,'#e8b98a',8,-2,7,4);}
+    else if(T.type==='bow'){g.strokeStyle='#8a5a2a';g.lineWidth=2;g.beginPath();g.arc(8,0,11,-1.2,1.2);g.stroke();R(g,'#ddd',12,-10,1,20);}
+    else if(T.type==='sling'){R(g,'#8a5a2a',6,-1,10,2);R(g,'#8a5a2a',14,-5,2,10);}
+    else{const L=T.reach-22,hd=held.id[0]==='m'||held.id==='pike'||held.id==='sword'?'#c9d2e0':'#8f8a84';R(g,'#8a5a2a',6,-1,L,2);
+      if(T.type==='pick')R(g,hd,4+L,-6,3,12);else if(T.type==='hatchet')R(g,hd,2+L,-6,6,7);else if(T.type==='spear')R(g,hd,6+L,-2,7,4);
+      else if(T.type==='club')R(g,'#a8743a',L,-3,8,6);else if(T.type==='torch'){R(g,'#ff7b2e',4+L,-4,6,7);R(g,'#ffe27a',6+L,-2,3,4);}
+      else if(T.type==='sword'){R(g,'#dfe6ee',10,-2,L,3);R(g,'#ffd84a',8,-4,2,8);}}
+    g.restore();};
+  if(P.dir===3)tool();
+  drawHero(g,P.x,P.y,P.dir,Math.floor(P.walk),P.armor,2);
+  if(P.dir!==3)tool();
+}
+function drawWorld(){
+  const g=ctx;cam.x=clamp(P.x-VW/2,0,WORLD-VW);cam.y=clamp(P.y-12-VH/2,0,WORLD-VH);
+  g.save();if(shakeT>0)g.translate(Math.round(rnd(-shakeA,shakeA)),Math.round(rnd(-shakeA,shakeA)));g.translate(-Math.round(cam.x),-Math.round(cam.y));
+  const tx0=Math.max(0,Math.floor(cam.x/TS)),ty0=Math.max(0,Math.floor(cam.y/TS)),tx1=Math.min(N-1,tx0+Math.ceil(VW/TS)+1),ty1=Math.min(N-1,ty0+Math.ceil(VH/TS)+1),f=Math.floor(gt*2)%2;
+  for(let y=ty0;y<=ty1;y++)for(let x=tx0;x<=tx1;x++){const t=W.tiles[y*N+x];g.drawImage(tileImg[t][t<2||t===8?f:(x*7+y*13)&1],x*TS,y*TS);
+    if(t<=1){g.fillStyle='rgba(255,255,255,.3)';if(tileAt(x,y-1)>1)g.fillRect(x*TS,y*TS,TS,3);if(tileAt(x,y+1)>1)g.fillRect(x*TS,y*TS+TS-3,TS,3);if(tileAt(x-1,y)>1)g.fillRect(x*TS,y*TS,3,TS);if(tileAt(x+1,y)>1)g.fillRect(x*TS+TS-3,y*TS,3,TS);}}
+  for(const h of hazards){const k=1-h.t/h.T;g.fillStyle='rgba(200,90,255,.25)';g.beginPath();g.arc(h.x,h.y,h.r,0,6.3);g.fill();g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.arc(h.x,h.y,h.r*k,0,6.3);g.stroke();}
+  const L=[],cx=cam.x+VW/2,cy=cam.y+VH/2,inView=(x,y,m)=>x>cam.x-m&&x<cam.x+VW+m&&y>cam.y-m&&y<cam.y+VH+m;
+  nodesNear(cx,cy,Math.max(VW,VH)/2+80,n=>{if(inView(n.x,n.y,70))L.push({y:n.y,f:()=>drawNode(g,n)});});
+  for(const s of W.structs)if(inView(s.x,s.y,50))L.push({y:s.y+(s.k==='bed'?-40:12),f:()=>drawStruct(g,s)});
+  for(const s of W.sites)if(inView(s.x,s.y,60))L.push({y:s.y+6,f:()=>{R(g,'#5a5068',s.x-12,s.y-6,24,14);R(g,'#8a7aa0',s.x-10,s.y-10,20,6);
+    if(!s.taken){const c=['#7dff8a','#ff7b5a','#9be8ff'][s.i],b=Math.sin(gt*3)*3;R(g,c,s.x-5,s.y-26+b,10,12);R(g,'#fff',s.x-3,s.y-24+b,3,4);if(Math.random()<.2)burst(s.x+rnd(-8,8),s.y-20,c,1,30);}}});
+  if(inView(W.ob.x,W.ob.y,120))L.push({y:W.ob.y+10,f:()=>{const o=W.ob,b=Math.sin(gt*2)*3;R(g,'#3a2a5a',o.x-16,o.y-4,32,14);R(g,'#5a3f8a',o.x-9,o.y-84,18,84);R(g,'#8d5bd6',o.x-6,o.y-80,5,76);R(g,'#c9a8ff',o.x-5,o.y-96+b,10,10);R(g,'#fff',o.x-2,o.y-93+b,3,3);if(Math.random()<.15)burst(o.x+rnd(-12,12),o.y-rnd(10,90),'#c9a8ff',1,24);}});
+  if(G.bag)L.push({y:G.bag.y,f:()=>{R(g,'#8a5a2a',G.bag.x-8,G.bag.y-12,16,14);R(g,'#b07a45',G.bag.x-6,G.bag.y-10,12,4);R(g,'#e0412e',G.bag.x-2,G.bag.y-16-Math.abs(Math.sin(gt*4))*4,4,4);}});
+  const air=[];
+  for(const d of dinos){if(d.dead||!inView(d.x,d.y,120))continue;const fly=d.air||(SP[d.sp].fly&&!d.tamed&&!d.ko);
+    (fly?air:L).push({y:d.y,f:()=>{const yy=fly?d.y-30:d.y;g.fillStyle='rgba(0,0,0,.22)';g.fillRect(d.x-d.r,d.y-3,d.r*2,6);
+      if(SP[d.sp].swim){g.globalAlpha=.75;drawDino(g,d,d.x,yy+4,gt);g.globalAlpha=1;}else drawDino(g,d,d.x,yy,gt);
+      if(d===P.mount){const S=SP[d.sp];drawHero(g,d.x-d.face*2,yy-(S.sh.lh+S.sh.b[1])*S.sc*.9-2,d.face<0?1:2,0,P.armor,1.5);}}});}
+  if(!P.mount)L.push({y:P.y,f:()=>drawPlayerSprite(g)});
+  L.sort((a,b)=>a.y-b.y);for(const o of L)o.f();for(const o of air)o.f();
+  for(const p of projs){if(p.kind==='spit'){R(g,'#9be04a',p.x-4,p.y-4,8,8);R(g,'#e0ffb0',p.x-2,p.y-2,3,3);}else if(p.kind==='stone')R(g,'#8f8a84',p.x-3,p.y-3,6,6);
+    else{g.save();g.translate(p.x,p.y);g.rotate(Math.atan2(p.vy,p.vx));R(g,'#8a5a2a',-8,-1,12,2);R(g,p.kind==='tranq'?'#b04ad0':'#ddd',4,-2,4,4);g.restore();}}
+  for(const q of parts){g.fillStyle=q.c;g.fillRect(q.x-q.s/2,q.y-q.s/2,q.s,q.s);}
+  // labels and bars
+  const mwx=mouse.x+cam.x,mwy=mouse.y+cam.y;
+  for(const d of dinos){if(d.dead||!inView(d.x,d.y,60))continue;const S=SP[d.sp],top=d.y-(S.sh.lh+S.sh.b[1]+S.sh.neck[1]+4)*S.sc*(d.alpha?1.3:1)-(d.air?30:0),hv=dist(mwx,mwy,d.x,d.y-d.r*.6)<d.r+10;
+    if(d.boss)continue;
+    if(d.ko){bar(d.x-24,top-16,48,4,d.torp/d.mtorp,'#b561ff');bar(d.x-24,top-10,48,4,d.tame,'#ffe066');tx('Zzz',d.x+d.r,top-30+Math.sin(gt*3)*3,'#c9a8ff',10);
+      tx('sleep',d.x-28,top-18,'#c9a8ff',7,'right');tx('tame',d.x-28,top-12,'#ffe066',7,'right');}
+    if(d.showT>0||hv||d.ko||(d.tamed&&d.hp<d.mhp*.98))bar(d.x-18,top-4,36,3,d.hp/d.mhp,d.tamed?'#7dff8a':'#e8334a');
+    if(d.tamed&&(hv||dist(d.x,d.y,P.x,P.y)<150))tx(d.name+' '+d.lvl,d.x,top-(d.ko?30:16),'#7dff8a',8,'center');
+    else if(d.alpha)tx('ALPHA '+S.n,d.x,top-16,'#ff5a5a',9,'center');
+    else if(hv&&!d.ko)tx(S.n+' Lv'+d.lvl,d.x,top-16,S.ag===2?'#ff8a8a':S.ag===1?'#ffe066':'#fff',9,'center');
+    if(d.torp>0&&!d.ko&&!d.tamed)bar(d.x-18,top+1,36,2,d.torp/d.mtorp,'#b561ff');
+    if(d.wind>0)tx('!',d.x,top-28,'#ff5a5a',12,'center');}
+  for(const q of texts){g.globalAlpha=clamp(q.t*2,0,1);tx(q.s,q.x,q.y,q.c,9,'center');}g.globalAlpha=1;
+  if(G.place&&G.state==='play'&&!overUI()){const s=placeSpot();g.globalAlpha=.55;drawStruct(g,{k:G.place,tx:s.tx,ty:s.ty});g.globalAlpha=1;g.strokeStyle=s.ok?'#7dff8a':'#ff5a5a';g.lineWidth=2;g.strokeRect(s.tx*TS+1,s.ty*TS+1,TS-2,TS-2);}
+  g.restore();
+  // night and light
+  const na=nightAlpha();
+  if(na>0){if(!lightCv||lightCv.width!==VW){lightCv=document.createElement('canvas');lightCv.width=VW;lightCv.height=VH;}
+    const lg=lightCv.getContext('2d');lg.globalCompositeOperation='source-over';lg.clearRect(0,0,VW,VH);lg.fillStyle='rgba(6,10,44,'+na+')';lg.fillRect(0,0,VW,VH);lg.globalCompositeOperation='destination-out';
+    const light=(x,y,r)=>{const gr=lg.createRadialGradient(x,y,r*.2,x,y,r);gr.addColorStop(0,'rgba(0,0,0,.95)');gr.addColorStop(1,'rgba(0,0,0,0)');lg.fillStyle=gr;lg.beginPath();lg.arc(x,y,r,0,6.3);lg.fill();};
+    const h=heldItem();light(P.x-cam.x,P.y-12-cam.y,h&&h.tool&&h.tool.light?170:75);
+    for(const s of W.structs)if((s.k==='campfire'||s.k==='forge')&&inView(s.x,s.y,160))light(s.x-cam.x,s.y-cam.y,150+Math.sin(gt*9)*5);
+    light(W.ob.x-cam.x,W.ob.y-50-cam.y,110);
+    g.drawImage(lightCv,0,0);}
+}
+
+// ============================ HUD =====================================
+function timeName(){const t=G.time;return t<.08?'Dawn':t<.3?'Morning':t<.55?'Midday':t<.7?'Afternoon':t<.76?'Dusk':t<.97?'Night':'Dawn';}
+function drawHUD(){
+  const g=ctx,by=VH-66;
+  // needs
+  const rows=[['HP',P.hp/maxHP(),'#e8334a',Math.ceil(P.hp)],['STA',P.stam/maxStam(),'#7dd34a',Math.ceil(P.stam)],['FOOD',P.food/maxFood(),'#e09a3a',Math.ceil(P.food)],['WATER',P.water/maxWater(),'#3d9fe0',Math.ceil(P.water)]];
+  g.fillStyle='rgba(0,0,0,.45)';g.fillRect(4,by-18,150,80);
+  rows.forEach((r,i)=>{const low=r[1]<.25&&Math.floor(gt*4)%2;tx(r[0],8,by+i*12,low?'#ff5a5a':'#ddd',8);bar(40,by+1+i*12,84,6,r[1],r[2]);tx(String(r[3]),128,by+i*12,'#fff',8);});
+  const wgt=invWeight(),mw=maxWeight();tx('WEIGHT '+Math.round(wgt)+'/'+mw,8,by+49,wgt>mw?'#ff5a5a':'#aaa',8);
+  tx('Lv '+P.lvl,8,by-14,'#ffe066',9);bar(40,by-11,84,4,P.lvl>=MAXLVL?1:P.xp/xpNeed(P.lvl),'#ffe066');
+  if(P.pts>0&&Math.floor(gt*2)%2)tx('+'+P.pts+' stat point'+(P.pts>1?'s':'')+'! Press TAB',8,by-(P.mount?82:30),'#ffe066',9);
+  if(P.mount){const m=P.mount,my=by-70;g.fillStyle='rgba(0,0,0,.45)';g.fillRect(4,my,150,34);tx('Riding '+m.name,8,my+3,'#7dff8a',8);bar(8,my+16,104,6,m.hp/m.mhp,'#7dff8a');tx(SP[m.sp].n+' Lv'+m.lvl,8,my+25,'#ccc',8);}
+  // hotbar
+  const hx=VW/2-120;for(let i=0;i<8;i++){const id=P.hot[i];slot(hx+i*30+2,VH-32,id,id?P.inv[id]||0:0,i===P.sel);tx(String(i+1),hx+i*30+4,VH-31,'#aaa',7);}
+  const held=heldItem();if(held&&!P.mount)tx(held.n+(held.food?'  (click to eat)':held.st?'  (click the ground to build)':''),VW/2,VH-44,'#ffe9a0',9,'center');
+  // minimap
+  const ms=84,mx0=VW-ms-6,my0=6,ptx=P.x/TS,pty=P.y/TS,sx=clamp(ptx-21,0,N-42),sy=clamp(pty-21,0,N-42);
+  R(g,'#000',mx0-2,my0-2,ms+4,ms+4);g.drawImage(W.mapCv,sx,sy,42,42,mx0,my0,ms,ms);
+  const mm=(x,y,c,s)=>{const X=mx0+(x/TS-sx)*2,Y=my0+(y/TS-sy)*2;if(X>mx0&&Y>my0&&X<mx0+ms&&Y<my0+ms)R(g,c,X-s/2,Y-s/2,s,s);};
+  for(const d of dinos)if(d.tamed)mm(d.x,d.y,'#7dff8a',3);for(const s of W.sites)if(!s.taken)mm(s.x,s.y,'#ff9a3a',5);mm(W.ob.x,W.ob.y,'#c9a8ff',5);if(G.bag)mm(G.bag.x,G.bag.y,'#ff3a3a',5);
+  if(Math.floor(gt*4)%2)mm(P.x,P.y,'#fff',4);
+  tx('Day '+G.day+' · '+timeName(),VW-6,my0+ms+5,isNight()?'#9fb4ff':'#ffe9a0',9,'right');tx(BIO[tileAtPx(P.x,P.y)],VW-6,my0+ms+16,'#ccc',8,'right');tx('M: map',VW-6,my0+ms+26,'#888',8,'right');
+  // guide
+  if(G.showGuide){const ls=wrap(GUIDE[G.g][0],206,9),h=20+ls.length*11;g.fillStyle='rgba(0,0,0,.55)';g.fillRect(4,4,222,h);R(g,'#ffe066',4,4,3,h);
+    tx('SURVIVOR\'S GUIDE  '+Math.min(G.g+1,GUIDE.length-1)+'/'+(GUIDE.length-1),12,7,'#ffe066',9);ls.forEach((l,i)=>tx(l,12,19+i*11,'#fff',9));tx('G: hide',222,7,'#777',7,'right');}
+  else tx('G: show guide',6,6,'#888',8);
+  // warnings + interaction hint
+  G.warn.forEach((w,i)=>tx(w,VW/2,VH-74-i*12,w===w.toUpperCase()||/[A-Z]{4}/.test(w)?(Math.floor(gt*4)%2?'#ff5a5a':'#ffb0b0'):'#ffd0a0',10,'center'));
+  if(G.state==='play'){const f=findInteract();if(f)tx(f.label,VW/2,VH-58,'#ffe066',10,'center');}
+  // boss bar
+  const b=dinos.find(d=>d.boss&&!d.dead);if(b){bar(VW/2-150,26,300,9,b.hp/b.mhp,'#b561ff');tx('THE TITAN',VW/2,12,'#fff',11,'center');}
+  // toasts
+  let ty0=G.showGuide?70:22;if(b)ty0=Math.max(ty0,44);
+  for(const t of toasts){const ls=wrap(t.s,VW-260,9).slice(0,3);let w=0;for(const l of ls)w=Math.max(w,tw(l,9));g.globalAlpha=clamp(t.t,0,1);g.fillStyle='rgba(0,0,0,.65)';g.fillRect(VW/2-w/2-8,ty0-3,w+16,ls.length*11+6);ls.forEach((l,j)=>tx(l,VW/2,ty0+j*11,t.c,9,'center'));ty0+=ls.length*11+9;}g.globalAlpha=1;
+  if(P.hp<maxHP()*.25&&!P.dead){const a=.25+Math.sin(gt*6)*.1,gr=g.createRadialGradient(VW/2,VH/2,VH*.3,VW/2,VH/2,VW*.62);gr.addColorStop(0,'rgba(200,0,0,0)');gr.addColorStop(1,'rgba(200,0,0,'+a+')');g.fillStyle=gr;g.fillRect(0,0,VW,VH);}
+}
+
+// ============================ SCREENS =================================
+let tipId=null;
+function invIds(inv){return Object.keys(IT).filter(k=>inv[k]>0);}
+function grid(x,y,cols,rows,inv,onClick){
+  const ids=invIds(inv);let hv=null;
+  for(let i=0;i<cols*rows;i++){const cx=x+(i%cols)*30,cy=y+Math.floor(i/cols)*30,id=ids[i];slot(cx,cy,id,id?inv[id]:0,false);
+    if(id&&hover(cx,cy,28,28)){hv=id;R(ctx,'rgba(255,255,255,.15)',cx,cy,26,26);if(mouse.click){mouse.click=false;onClick(id);}}}
+  return hv;
+}
+function useItem(id){
+  const it=IT[id];
+  if(it.food)eat(id);
+  else if(it.armor){const old=P.armor;take(id);P.armor=id;if(old)addItem(old,1,true);Snd.play('craft');toast('You put on the '+it.n+'.');}
+  else if(it.tool||it.st){let i=P.hot.indexOf(id);if(i<0){i=P.hot.indexOf(null);if(i<0)i=P.sel;P.hot[i]=id;}P.sel=i;Snd.play('ui');toast(it.n+' is in your hand (slot '+(i+1)+').'+(it.st?' Close this screen and click the ground to build.':''));}
+  else if(id==='narcotic'||id==='narco')toast('Give this to a knocked-out dinosaur (press E on it).');
+  else if(id.startsWith('saddle'))toast('Press E on one of your tamed dinosaurs to put the saddle on.');
+  else toast(it.d);
+}
+function drawInv(){
+  overlay(.55);panel(8,8,VW-16,VH-16);tipId=null;let tipR=null;
+  tx('INVENTORY',18,16,'#ffe066',12);const wgt=invWeight(),mw=maxWeight();tx('Weight '+Math.round(wgt)+' / '+mw,228,18,wgt>mw?'#ff5a5a':'#aaa',9,'right');
+  const hv=grid(18,36,7,5,P.inv,useItem);if(hv){tipId=hv;for(let i=0;i<8;i++)if(P_(String(i+1))){const j=P.hot.indexOf(hv);if(j>=0)P.hot[j]=null;P.hot[i]=hv;Snd.play('ui');}}
+  tx('Armor:',18,194,'#aaa',9);slot(60,188,P.armor,1,false);if(P.armor&&hover(60,188,26,26)){tipId=P.armor;if(mouse.click){mouse.click=false;addItem(P.armor,1,true);P.armor=null;}}
+  tx(P.armor?IT[P.armor].n:'none',92,194,'#fff',9);
+  tx('LEVEL '+P.lvl,18,222,'#ffe066',10);tx(P.lvl>=MAXLVL?'MAX':'XP '+Math.floor(P.xp)+'/'+xpNeed(P.lvl),90,223,'#aaa',9);tx(P.pts>0?'Points: '+P.pts:'',228,223,'#7dff8a',9,'right');
+  const val={hp:maxHP(),stam:maxStam(),food:maxFood(),water:maxWater(),weight:100+25*P.st.weight,melee:100+6*P.st.melee+'%',speed:100+2.5*P.st.speed+'%',fort:P.st.fort};
+  STATS.forEach((s,i)=>{const y=238+i*20;tx(s[1],18,y+4,'#ddd',9);tx(String(val[s[0]]),150,y+4,'#fff',9,'right');
+    if(hover(18,y,210,20))tx(s[2],18,VH-30,'#cfe',9);
+    if(P.pts>0&&btn(160,y,68,17,'+ upgrade',true,'#7dff8a')){P.st[s[0]]++;P.pts--;if(s[0]==='hp')P.hp+=10;Snd.play('craft');}});
+  // crafting
+  const x0=246,rw=VW-x0-18,vis=Math.floor((VH-36-74)/24),nearF=nearStruct(['campfire'],90),nearG=nearStruct(['forge'],90);
+  tx('CRAFTING',x0,16,'#ffe066',12);tx((nearF?'Campfire nearby  ':'')+(nearG?'Forge nearby':''),VW-18,18,'#ffb347',9,'right');
+  G.scroll=clamp((G.scroll||0)+mouse.wheel,0,Math.max(0,RECIPES.length-vis));
+  for(let i=0;i<vis;i++){const r=RECIPES[i+G.scroll];if(!r)break;const y=36+i*24,it=IT[r.id],lock=P.lvl<r.lvl,ok=!lock&&canCraft(r)&&stationOK(r),hv2=hover(x0,y,rw,23);
+    R(ctx,hv2?'#3a4a30':i%2?'#1c2420':'#222c26',x0,y,rw,23);ctx.globalAlpha=lock?.35:1;drawIcon(ctx,r.id,x0+4,y+3);ctx.globalAlpha=1;
+    tx(it.n+(r.n?' x'+r.n:''),x0+24,y+2,lock?'#666':ok?'#fff':'#bbb',9);
+    if(lock)tx('unlocks at level '+r.lvl,x0+24,y+12,'#777',8);
+    else{let cx=x0+24;if(r.st){const s=r.st==='fire'?'at Campfire':'at Forge';tx(s,cx,y+12,stationOK(r)?'#7dff8a':'#ffb347',8);cx+=tw(s,8)+8;}
+      for(const k in r.cost){const s=IT[k].n+' '+r.cost[k];tx(s,cx,y+12,has(k,r.cost[k])?'#9fd0a0':'#ff8a8a',8);cx+=tw(s,8)+8;}}
+    if(ok)tx('CRAFT',x0+rw-6,y+7,hv2?'#ffe066':'#7dff8a',9,'right');
+    if(hv2){tipR=r;if(mouse.click&&!lock){mouse.click=false;const n=K_('shift')?5:1;for(let k=0;k<n;k++)if(!craft(r))break;}}}
+  if(G.scroll>0)tx('▲',x0+rw/2,28,'#aaa',8,'center');if(G.scroll+vis<RECIPES.length)tx('▼ scroll for more',x0+rw/2,36+vis*24,'#aaa',8,'center');
+  const tid=tipR?tipR.id:tipId;
+  if(tid){const it=IT[tid];tx(it.n,x0,VH-44,'#ffe066',10);wrap(it.d+(tipR?'  (Shift+click: make 5)':tipId&&(it.tool||it.food||it.st)?'  Click: use.  Keys 1-8: put on the bar.':''),rw,9).slice(0,2).forEach((l,i)=>tx(l,x0,VH-32+i*10,'#cfd6e6',9));}
+  else tx('Click an item to use or wear it. Click a recipe to craft it.   TAB / Esc: close',x0,VH-30,'#888',9);
+}
+function drawChest(){
+  overlay(.55);const c=G.chest,w=230;panel(VW/2-w-10,60,w,250);panel(VW/2+10,60,w,250);
+  tx('YOUR THINGS',VW/2-w,68,'#ffe066',11);tx('STORAGE BOX',VW/2+20,68,'#ffe066',11);
+  const mv=toChest=>id=>{if(toChest){const n=P.inv[id];take(id,n);c.inv[id]=(c.inv[id]||0)+n;}else{const n=c.inv[id];delete c.inv[id];addItem(id,n,true);}Snd.play('pick');};
+  const h1=grid(VW/2-w,88,7,6,P.inv,mv(true)),h2=grid(VW/2+20,88,7,6,c.inv,mv(false)),h=h1||h2;
+  tx(h?IT[h].n+' — click to move':'Click a thing to move all of it.   E / Esc: close',VW/2,286,'#cfd6e6',9,'center');
+  tx('Weight '+Math.round(invWeight())+' / '+maxWeight(),VW/2-w,274,'#aaa',9);
+}
+function drawDinoPanel(){
+  const d=G.pd,S=SP[d.sp],w=330,h=206,x=Math.round(VW/2-w/2),y=Math.round(VH/2-h/2)-20,food=S.diet==='h'?'berry':'rawmeat';
+  panel(x,y,w,h,.95);g2(d,x+44,y+60);
+  if(G.state==='tame'){
+    tx('TAMING: '+S.n+'  Lv '+d.lvl,x+86,y+10,'#ffe066',11);
+    tx('Health',x+86,y+28,'#ddd',9);bar(x+140,y+29,170,7,d.hp/d.mhp,'#e8334a');
+    tx('Sleep',x+86,y+42,'#c9a8ff',9);bar(x+140,y+43,170,7,d.torp/d.mtorp,'#b561ff');
+    tx('Taming',x+86,y+56,'#ffe066',9);bar(x+140,y+57,170,7,d.tame,'#ffe066');
+    const need=Math.max(0,S.food-Math.round(d.tame*S.food)-d.stock),hv=P.inv[food]||0;
+    wrap('It eats 1 '+IT[food].n+' every few seconds while asleep. Food waiting: '+d.stock+'. Still needs: '+need+'. If the purple Sleep bar runs out, it wakes up and you start over!',w-24,9).forEach((l,i)=>tx(l,x+12,y+76+i*11,'#cfd6e6',9));
+    if(btn(x+12,y+116,150,20,'Feed 1 '+IT[food].n+' (have '+hv+')',hv>0&&need>0)){take(food);d.stock++;}
+    if(btn(x+168,y+116,150,20,'Feed all it needs ('+Math.min(hv,need)+')',hv>0&&need>0)){const n=Math.min(hv,need);take(food,n);d.stock+=n;}
+    const nb=P.inv.narco||0,nc=P.inv.narcotic||0;
+    if(btn(x+12,y+142,150,20,'Narcoberries x5 (have '+nb+')',nb>0)){const n=Math.min(5,nb);take('narco',n);d.torp=Math.min(d.mtorp,d.torp+8*n);Snd.play('eat');}
+    if(btn(x+168,y+142,150,20,'Narcotic (have '+nc+')',nc>0)){take('narcotic');d.torp=Math.min(d.mtorp,d.torp+60);Snd.play('eat');}
+    tx('Narcoberries and Narcotic keep it asleep longer.',x+12,y+168,'#888',8);
+  }else{
+    tx(d.name+' the '+S.n+'  Lv '+d.lvl,x+86,y+10,'#7dff8a',11);
+    tx('Health',x+86,y+28,'#ddd',9);bar(x+140,y+29,170,7,d.hp/d.mhp,'#7dff8a');tx(Math.ceil(d.hp)+' / '+d.mhp,x+310,y+39,'#aaa',8,'right');
+    tx('Bite damage '+d.dmg+(S.carry?'   ·   You carry +'+S.carry+' while riding':''),x+86,y+52,'#cfd6e6',9);
+    tx(d.mode==='follow'?'It is FOLLOWING you and defends you.':'It is STAYING here.',x+12,y+80,'#ffe9a0',9);
+    if(btn(x+12,y+96,150,20,d.mode==='follow'?'Tell it: Stay here':'Tell it: Follow me')){d.mode=d.mode==='follow'?'stay':'follow';}
+    const hv=(P.inv[food]||0)+(S.diet==='c'?P.inv.meat||0:0);
+    if(btn(x+168,y+96,150,20,'Feed to heal (have '+hv+')',hv>0&&d.hp<d.mhp)){if(has(food))take(food);else take('meat');d.hp=Math.min(d.mhp,d.hp+d.mhp*.1+10);Snd.play('eat');}
+    if(!S.ride)tx('This one is too small to ride, but it will fight for you.',x+12,y+128,'#aaa',9);
+    else if(d.saddle){if(btn(x+12,y+124,306,22,'RIDE '+d.name+'  (or press F next to it)',true,'#7dff8a'))ride(d);}
+    else{const hs=has(S.ride);if(btn(x+12,y+124,306,22,hs?'Put the '+IT[S.ride].n+' on':'Needs a '+IT[S.ride].n+' to ride  (craft it: TAB)',hs)){take(S.ride);d.saddle=true;Snd.play('craft');toast(d.name+' is saddled. Press F next to it to ride!','#7dff8a');}}
+    tx('Whistles:  Y = all follow    U = all stay',x+12,y+154,'#888',8);
+  }
+  if(btn(x+w-72,y+h-26,60,18,'Close'))G.state='play';
+}
+function g2(d,x,y){ctx.fillStyle='#1c2420';ctx.fillRect(x-34,y-50,70,62);const S=SP[d.sp],sc=Math.min(1,26/(S.sh.b[0]*S.sc));ctx.save();ctx.translate(x,y);ctx.scale(sc,sc);drawDino(ctx,Object.assign({},d,{ko:false,face:1,mv:false,flash:0}),0,0,0);ctx.restore();}
+function drawMap(){
+  overlay(.6);const s=Math.floor((VH-70)/N*10)/10,w=N*s,x=Math.round(VW/2-w/2),y=34;panel(x-8,8,w+16,VH-16);tx('MAP OF THE ISLAND',VW/2,14,'#ffe066',12,'center');
+  ctx.drawImage(W.mapCv,x,y,w,w);
+  const mk=(wx,wy,c,sz,lab)=>{const X=x+wx/TS*s,Y=y+wy/TS*s;R(ctx,'#000',X-sz/2-1,Y-sz/2-1,sz+2,sz+2);R(ctx,c,X-sz/2,Y-sz/2,sz,sz);if(lab)tx(lab,X+sz,Y-4,c,8);};
+  for(const st of W.sites)mk(st.x,st.y,st.taken?'#777':'#ff9a3a',7,st.taken?'taken':'Artifact');
+  mk(W.ob.x,W.ob.y,'#c9a8ff',8,'Obelisk');
+  for(const st of W.structs)if(st.k==='bed')mk(st.x,st.y,'#ffe066',5,'bed');
+  for(const d of dinos)if(d.tamed&&!d.dead)mk(d.x,d.y,'#7dff8a',4);
+  if(G.bag)mk(G.bag.x,G.bag.y,'#ff3a3a',6,'your bag');
+  if(Math.floor(gt*3)%2)mk(P.x,P.y,'#fff',6,'you');
+  tx('Yellow: beach · Green: grass, forest, jungle · Grey: mountain · White: snow        M / Esc: close',VW/2,VH-24,'#aaa',8,'center');
+}
+const HELP=[
+  ['MOVE','W A S D (or arrows).  Hold SHIFT to run.'],['AIM + HIT','Aim with the mouse. Hold LEFT CLICK to punch, chop, shoot or bite.'],
+  ['BAR','Keys 1-8 or the mouse wheel choose what is in your hand.'],['E','Gather a bush, drink, open, tame, talk to your dinosaur.'],
+  ['TAB','Inventory, crafting and stat points.'],['F','Ride / get off a saddled dinosaur.   SPACE: take off / land (Ptera).'],
+  ['X','Pick up a thing you built.     Y / U: whistle follow / stay.'],['M / G / Esc','Map / hide the guide / pause menu.'],
+  ['SURVIVE','Watch Food and Water. Eat berries or cooked meat, drink at the shore. Snow is deadly without Hide Armor or a fire.'],
+  ['GATHER','Pick: flint + thatch. Hatchet: wood + stone + hide. Things weigh you down, so build a Storage Box.'],
+  ['TAME','Knock a dinosaur out (Club, Slingshot, Tranq Arrows). Press E on it and feed it: Berries for plant-eaters, Raw Meat for meat-eaters. Keep the purple Sleep bar up with Narcoberries.'],
+  ['DANGER','Red names attack on sight. Yellow names fight back. White names run. Big meat-eaters live in the jungle and mountains. Piranhas live in deep water.'],
+  ['GOAL','Follow the Survivor\'s Guide (top left). Win 3 Artifacts from the Alphas, carry them to the Obelisk and beat the Titan.']];
+function drawHelp(){
+  panel(16,10,VW-32,VH-20);tx('HOW TO PLAY',VW/2,18,'#ffe066',13,'center');let y=40;
+  for(const h of HELP){tx(h[0],28,y,'#ffe066',9);const ls=wrap(h[1],VW-150,9);ls.forEach((l,i)=>tx(l,104,y+i*11,'#fff',9));y+=ls.length*11+6;}
+  if(btn(VW/2-40,VH-34,80,20,'Back')||P_('esc'))G.state=G.back||'title';
+}
+function drawTitle(){
+  const g=ctx,gr=g.createLinearGradient(0,0,0,VH);gr.addColorStop(0,'#f0a860');gr.addColorStop(.5,'#f8d8a0');gr.addColorStop(1,'#3d7fd6');g.fillStyle=gr;g.fillRect(0,0,VW,VH);
+  R(g,'#fff3c0',VW*.7,60,50,50);
+  g.fillStyle='#2f7a2e';g.beginPath();g.moveTo(0,VH);for(let x=0;x<=VW;x+=30)g.lineTo(x,VH*.62-Math.sin(x*.012)*40-Math.sin(x*.05)*10);g.lineTo(VW,VH);g.fill();
+  g.fillStyle='#e3c77d';g.fillRect(0,VH*.8,VW,VH*.2);g.fillStyle='#3d7fd6';g.fillRect(0,VH*.92,VW,VH*.08);
+  for(let i=0;i<7;i++)g.drawImage(SPR.tree[i%3===1?1:i%2?2:0],((i*131)%VW)-24,VH*.72-64+(i%3)*8);
+  const dd=(sp,x,y,f)=>drawDino(g,{sp,face:f,mv:true,seed:x,flash:0},x,y,gt);
+  dd('bronto',VW*.2+Math.sin(gt*.2)*20,VH*.86,1);dd('rex',VW*.78,VH*.88,-1);dd('raptor',VW*.5+Math.sin(gt*.6)*60,VH*.9,Math.cos(gt*.6)>0?1:-1);dd('dodo',VW*.36,VH*.93,1);
+  drawDino(g,{sp:'ptera',face:1,mv:true,air:true,seed:1,flash:0},(gt*40)%(VW+120)-60,110+Math.sin(gt)*14,gt);
+  tx('PRIMAL SHORES',VW/2,48,'#fff',40,'center');tx('gather  ·  craft  ·  tame  ·  survive',VW/2,96,'#3a2a12',12,'center');
+  const saved=hasSave(),bx=VW/2-90;let y=150;
+  if(saved){if(btn(bx,y,180,24,'Continue'))loadGame();y+=30;}
+  if(btn(bx,y,180,24,saved&&G.sure?'Really start over? Click again':'New Game')){if(saved&&!G.sure)G.sure=1;else{newGame();}}y+=30;
+  if(btn(bx,y,180,24,'How to Play')){G.state='help';G.back='title';}
+  tx('Mouse + keyboard.  Click the game first if keys do not respond.',VW/2,VH-16,'#fff',9,'center');
+}
+function drawIntro(){
+  overlay(1);const L=['You open your eyes. Sand. Waves. A sky you do not know.','You have no tools, no food, and no idea how you got here.','Something huge is moving in the jungle. Far inland, a purple light pulses on a tall stone: the Obelisk.','Gather. Craft. Tame the giants of this island — and find out what the Obelisk is guarding.'];
+  let y=110;L.forEach((s,i)=>{if(gt-G.it>i*1.4){wrap(s,VW-160,12).forEach(l=>{tx(l,VW/2,y,'#fff',12,'center');y+=17;});y+=12;}});
+  if(gt-G.it>1&&btn(VW/2-70,VH-70,140,26,'Wake up',true,'#ffe066')){G.state='play';toast('Follow the SURVIVOR\'S GUIDE in the top-left corner. Esc shows How to Play.','#ffe066',8);}
+}
+function drawPause(){
+  overlay(.6);const x=VW/2-90;let y=110;panel(x-20,80,220,250);tx('PAUSED',VW/2,90,'#ffe066',13,'center');y=116;
+  if(btn(x,y,180,24,'Back to the island')||P_('esc'))G.state='play';y+=30;
+  if(btn(x,y,180,24,'Save game')){toast(saveGame()?'Game saved.':'Could not save in this browser.','#7dff8a');G.state='play';}y+=30;
+  if(btn(x,y,180,24,'How to Play')){G.state='help';G.back='pause';}y+=30;
+  if(btn(x,y,180,24,'Sound: '+(Snd.on?'on':'off')))Snd.on=!Snd.on;y+=30;
+  if(btn(x,y,180,24,'Music: '+(Music.on?'on':'off')))Music.on=!Music.on;y+=30;
+  if(btn(x,y,180,24,'Save and quit')){saveGame();toTitle();}
+}
+
+// ============================ SAVE / LOAD =============================
+const SAVEKEY='primal_shores_v1';
+function hasSave(){try{return !!localStorage.getItem(SAVEKEY);}catch(e){return false;}}
+function saveGame(){
+  if(!P||P.dead)return false;
+  try{const p=Object.assign({},P,{mount:null,lastHit:null});
+    const d={v:1,seed:W.seed,time:G.time,day:G.day,g:G.g,flags:G.flags,won:G.won,bag:G.bag,showGuide:G.showGuide,P:p,
+      tames:dinos.filter(d=>d.tamed&&!d.dead).map(d=>({sp:d.sp,x:d.x,y:d.y,lvl:d.lvl,hp:d.hp,mhp:d.mhp,dmg:d.dmg,name:d.name,mode:d.mode,saddle:d.saddle,txp:d.txp})),
+      structs:W.structs.map(s=>({k:s.k,tx:s.tx,ty:s.ty,hp:s.hp,inv:s.inv})),sites:W.sites.map(s=>({taken:s.taken,cleared:s.cleared}))};
+    localStorage.setItem(SAVEKEY,JSON.stringify(d));return true;}catch(e){return false;}
+}
+function baseG(){return {state:'play',time:.12,day:1,g:0,flags:{},won:false,bag:null,warn:[],place:null,scroll:0,spT:0,slowT:0,saveT:45,showGuide:true,pd:null,chest:null};}
+function clearFx(){dinos=[];projs=[];parts=[];texts=[];toasts=[];hazards=[];}
+function newGame(){
+  genWorld((Math.random()*1e9)|0);clearFx();P=mkPlayer();G=baseG();G.state='intro';G.it=gt;Music.set('day');
+  for(let i=0;i<4;i++)mkDino('dodo',P.x+rnd(-260,260),P.y-rnd(60,220),1);
+}
+function loadGame(){
+  try{const d=JSON.parse(localStorage.getItem(SAVEKEY));if(!d||!d.P)return false;
+    genWorld(d.seed);clearFx();P=Object.assign(mkPlayer(),d.P);P.mount=null;P.lastHit=null;P.dead=false;
+    for(const k in P.inv)if(!IT[k])delete P.inv[k];P.hot=P.hot.map(h=>IT[h]?h:null);
+    G=Object.assign(baseG(),{time:d.time,day:d.day,g:d.g,flags:d.flags||{},won:d.won,bag:d.bag,showGuide:d.showGuide!==false});
+    for(const s of d.structs||[]){if(!STHP[s.k])continue;addStruct(s.k,s.tx,s.ty,{hp:s.hp,inv:s.inv});nodesNear(s.tx*TS+16,s.ty*TS+16,40,n=>{if(Math.abs(n.x-s.tx*TS-16)<18&&Math.abs(n.y-6-s.ty*TS-16)<18)removeNode(n,false);});}
+    (d.sites||[]).forEach((s,i)=>{if(W.sites[i]){W.sites[i].taken=s.taken;W.sites[i].cleared=s.cleared;}});
+    for(const t of d.tames||[]){if(!SP[t.sp])continue;const n=mkDino(t.sp,t.x,t.y,t.lvl,{tamed:true,name:t.name,mode:t.mode||'follow',saddle:t.saddle,txp:t.txp||0});n.mhp=t.mhp;n.hp=t.hp;n.dmg=t.dmg;}
+    Music.set('day');toast('Welcome back, survivor.','#7dff8a');return true;
+  }catch(e){return false;}
+}
+function toTitle(){G={state:'title'};clearFx();Music.set('day');}
+
+// ============================ MAIN LOOP ===============================
+function update(dt){
+  switch(G.state){
+    case'play':
+      if(P_('tab','i')){G.state='inv';G.scroll=0;Snd.play('ui');break;}
+      if(P_('m')){G.state='map';Snd.play('ui');break;}
+      if(P_('esc')){G.state='pause';break;}
+      if(P_('g'))G.showGuide=!G.showGuide;
+      updatePlayer(dt);if(!P.dead&&G.state!=='win')updateWorld(dt);break;
+    case'tame':case'dino':{const d=G.pd;
+      if(K_('w','a','s','d')||P_('esc','e')||!d||d.dead||dist(P.x,P.y,d.x,d.y)>d.r+70||(G.state==='tame'&&!d.ko)){G.state='play';break;}
+      updatePlayer(dt);if(!P.dead)updateWorld(dt);break;}
+    case'inv':case'chest':if(P_('tab','i','esc','e'))G.state='play';break;
+    case'map':if(P_('m','esc'))G.state='play';break;
+  }
+  if(P){for(const q of parts){q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=.92;q.vy*=.92;q.t-=dt;}parts=parts.filter(q=>q.t>0);
+    for(const q of texts){q.y-=26*dt;q.t-=dt;}texts=texts.filter(q=>q.t>0);
+    for(const q of toasts)q.t-=dt;toasts=toasts.filter(q=>q.t>0);
+    if(shakeT>0){shakeT-=dt;if(shakeT<=0)shakeA=0;}}
+}
+function draw(){
+  const s=G.state;ctx.globalAlpha=1;
+  if(s==='title')return drawTitle();
+  if(s==='intro')return drawIntro();
+  if(s==='help'&&!P){ctx.fillStyle='#1c2a20';ctx.fillRect(0,0,VW,VH);return drawHelp();}
+  drawWorld();drawHUD();
+  if(s==='inv')drawInv();else if(s==='chest')drawChest();else if(s==='tame'||s==='dino')drawDinoPanel();else if(s==='map')drawMap();
+  else if(s==='pause')drawPause();else if(s==='help'){overlay(.7);drawHelp();}
+  else if(s==='dead'){overlay(.7);tx('YOU DIED',VW/2,120,'#e8334a',34,'center');tx('Day '+G.day+'  ·  Level '+P.lvl,VW/2,170,'#ddd',11,'center');
+    tx(G.bag?'Your things wait in a bag where you fell.':'',VW/2,190,'#ffe9a0',10,'center');tx('Your tamed dinosaurs and your buildings are safe.',VW/2,206,'#aaa',9,'center');
+    if(gt-G.deadT>1&&btn(VW/2-70,240,140,26,P.bed?'Wake up at your mat':'Wake up on the beach',true,'#ffe066'))respawn();}
+  else if(s==='win'){overlay(.72);tx('THE TITAN FALLS',VW/2,90,'#ffe066',30,'center');
+    ['The Obelisk goes quiet. The island breathes out.','You came here with nothing. Now the giants walk beside you.','','Day '+G.day+'  ·  Level '+P.lvl+'  ·  '+dinos.filter(d=>d.tamed).length+' tamed dinosaurs'].forEach((l,i)=>tx(l,VW/2,150+i*18,'#fff',11,'center'));
+    if(btn(VW/2-80,250,160,26,'Keep exploring',true,'#7dff8a'))G.state='play';}
+}
+let lastT=0;
+function frame(now){
+  const dt=Math.min(.034,Math.max(0,(now-lastT)/1000)||0);lastT=now;gt+=dt;
+  try{update(dt);draw();}catch(err){console.error(err);if(window.__TEST__)throw err;}
+  for(const k in pressed)delete pressed[k];mouse.click=false;mouse.rclick=false;mouse.wheel=0;
+  Music.update();requestAnimationFrame(frame);
+}
+resize();buildArt();toTitle();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

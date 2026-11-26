@@ -1,0 +1,4960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bean Royale</title>
+  <style>
+@import url('https://fonts.googleapis.com/css2?family=Titan+One&family=Nunito:wght@600;800&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #6ec6ff; font-family: 'Nunito', system-ui, sans-serif; color: #fff; user-select: none; }
+canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hidden { display: none !important; }
+.muted { opacity: .75; font-size: 14px; }
+
+.panel {
+  position: fixed; background: rgba(40, 20, 90, .78); backdrop-filter: blur(8px);
+  border: 4px solid #fff; border-radius: 28px; padding: 28px 34px; box-shadow: 0 12px 0 rgba(0,0,0,.25);
+}
+.center { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+
+/* ---------- menu ---------- */
+#menu { width: min(460px, 92vw); text-align: center; display: flex; flex-direction: column; gap: 16px; }
+.logo { font-family: 'Titan One', cursive; font-size: 58px; letter-spacing: 2px; line-height: 1; color: #ffd60a; text-shadow: 0 5px 0 #c1121f, 0 9px 0 rgba(0,0,0,.25); }
+.logo span { display: block; color: #ff5fa2; text-shadow: 0 5px 0 #7209b7, 0 9px 0 rgba(0,0,0,.25); }
+.tagline { font-weight: 800; opacity: .9; }
+.field { display: flex; flex-direction: column; gap: 6px; text-align: left; font-weight: 800; }
+.field input { font: inherit; font-size: 18px; padding: 10px 14px; border-radius: 14px; border: 3px solid #fff; background: rgba(255,255,255,.12); color: #fff; outline: none; }
+.field input::placeholder { color: rgba(255,255,255,.6); }
+.swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.swatches button { aspect-ratio: 1; border-radius: 50%; border: 3px solid rgba(255,255,255,.4); cursor: pointer; transition: transform .1s; }
+.swatches button.selected { border-color: #fff; transform: scale(1.15); box-shadow: 0 0 0 3px rgba(0,0,0,.25); }
+.patterns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.patterns button { font: inherit; font-weight: 800; padding: 8px 4px; border-radius: 12px; border: 3px solid rgba(255,255,255,.4); background: rgba(255,255,255,.1); color: #fff; cursor: pointer; }
+.patterns button.selected { border-color: #fff; background: rgba(255,255,255,.3); }
+.big-btn {
+  font-family: 'Titan One', cursive; font-size: 30px; padding: 14px; border: none; border-radius: 20px; cursor: pointer;
+  background: #ffd60a; color: #5a189a; box-shadow: 0 7px 0 #c77d00; transition: transform .08s, box-shadow .08s;
+}
+.big-btn:hover { transform: translateY(-2px); }
+.big-btn:active { transform: translateY(5px); box-shadow: 0 2px 0 #c77d00; }
+.big-btn:disabled { opacity: .6; cursor: wait; }
+
+/* ---------- lobby ---------- */
+.lobby { left: 24px; top: 24px; width: 300px; max-height: calc(100vh - 48px); overflow: auto; }
+.lobby h2 { font-family: 'Titan One', cursive; font-weight: 400; font-size: 24px; }
+.lobby-timer { font-family: 'Titan One', cursive; font-size: 34px; color: #ffd60a; margin: 6px 0; }
+#lobby-list { list-style: none; margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+#lobby-list li { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+.dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; flex: none; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; inset: 0; pointer-events: none; }
+.chip { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); font-family: 'Titan One', cursive; font-size: 20px; padding: 6px 20px; border-radius: 999px; background: rgba(40,20,90,.75); border: 3px solid #fff; white-space: nowrap; }
+.timer { position: absolute; left: 50%; top: 62px; transform: translateX(-50%); font-family: 'Titan One', cursive; font-size: 40px; text-shadow: 0 4px 0 rgba(0,0,0,.35); }
+.timer.low { color: #ff4d6d; animation: pulse .5s infinite alternate; }
+.counter { position: absolute; right: 22px; top: 18px; font-family: 'Titan One', cursive; font-size: 26px; padding: 8px 18px; border-radius: 18px; background: rgba(40,20,90,.75); border: 3px solid #fff; text-align: right; line-height: 1.15; }
+.counter small { display: block; font-family: 'Nunito'; font-weight: 800; font-size: 13px; opacity: .85; }
+.status-chip { position: absolute; left: 22px; top: 18px; font-family: 'Titan One', cursive; font-size: 22px; padding: 8px 18px; border-radius: 18px; border: 3px solid #fff; }
+.status-chip.q { background: #2dc653; }
+.status-chip.x { background: #e5383b; }
+.feed { position: absolute; left: 22px; top: 80px; display: flex; flex-direction: column; gap: 6px; width: 320px; }
+.feed div { background: rgba(0,0,0,.45); padding: 6px 12px; border-radius: 12px; font-weight: 800; font-size: 15px; animation: feedIn .25s ease-out; }
+.spectate { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); background: rgba(0,0,0,.55); padding: 8px 18px; border-radius: 14px; font-weight: 800; }
+.ping { position: absolute; right: 12px; bottom: 10px; font-size: 12px; opacity: .7; }
+.help { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); background: rgba(0,0,0,.4); padding: 7px 16px; border-radius: 12px; font-size: 13px; white-space: nowrap; }
+
+.intro-card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; animation: popIn .45s cubic-bezier(.2,1.6,.4,1); }
+.intro-round { font-family: 'Titan One', cursive; font-size: 22px; opacity: .9; text-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.intro-name { font-family: 'Titan One', cursive; font-size: 78px; color: #ffd60a; text-shadow: 0 6px 0 #c1121f, 0 12px 0 rgba(0,0,0,.25); line-height: 1.05; }
+.intro-mode { display: inline-block; margin-top: 10px; font-family: 'Titan One', cursive; font-size: 22px; padding: 4px 18px; border-radius: 999px; background: #7209b7; border: 3px solid #fff; }
+.intro-desc { margin-top: 12px; font-weight: 800; font-size: 19px; max-width: 620px; text-shadow: 0 2px 4px rgba(0,0,0,.5); }
+.intro-target { margin-top: 8px; font-family: 'Titan One', cursive; font-size: 20px; color: #caffbf; text-shadow: 0 3px 0 rgba(0,0,0,.3); }
+
+.banner { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); font-family: 'Titan One', cursive; font-size: 88px; white-space: nowrap; text-shadow: 0 7px 0 rgba(0,0,0,.3); pointer-events: none; animation: popIn .4s cubic-bezier(.2,1.6,.4,1); }
+.countdown { position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%); font-family: 'Titan One', cursive; font-size: 180px; color: #ffd60a; text-shadow: 0 10px 0 #c1121f; pointer-events: none; }
+.countdown.tick { animation: popIn .35s cubic-bezier(.2,1.6,.4,1); }
+
+.results { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(640px, 92vw); text-align: center; }
+.results h2 { font-family: 'Titan One', cursive; font-weight: 400; font-size: 40px; color: #ffd60a; }
+#results-you { font-family: 'Titan One', cursive; font-size: 24px; margin: 6px 0 14px; }
+.results-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; text-align: left; }
+.results h3 { font-family: 'Titan One', cursive; font-weight: 400; margin-bottom: 6px; }
+.results ul { list-style: none; max-height: 40vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; font-weight: 800; }
+.results li { display: flex; gap: 8px; align-items: center; }
+.results li.me { color: #ffd60a; }
+
+.winner { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; background: radial-gradient(circle, rgba(255,214,10,.25), transparent 60%); }
+.crown-icon { font-size: 120px; animation: bob 1s ease-in-out infinite alternate; }
+.winner-name { font-family: 'Titan One', cursive; font-size: 80px; color: #ffd60a; text-shadow: 0 7px 0 #c1121f, 0 14px 0 rgba(0,0,0,.25); }
+.winner-sub { font-family: 'Titan One', cursive; font-size: 28px; text-shadow: 0 3px 0 rgba(0,0,0,.3); }
+
+@keyframes popIn { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+@keyframes pulse { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.12); } }
+@keyframes feedIn { from { transform: translateX(-30px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes bob { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-16px) rotate(6deg); } }
+
+@media (max-width: 700px) {
+  .intro-name, .winner-name { font-size: 48px; }
+  .banner { font-size: 54px; }
+  .help { display: none; }
+}
+
+</style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- ===== Main menu ===== -->
+  <div id="menu" class="panel center">
+    <h1 class="logo">BEAN<span>ROYALE</span></h1>
+    <p class="tagline">You vs 19 bots. 3 rounds. 1 crown.</p>
+    <label class="field">
+      <span>Name</span>
+      <input id="name-input" maxlength="16" placeholder="Your bean name" autocomplete="off" />
+    </label>
+    <div class="field">
+      <span>Colour</span>
+      <div id="swatches" class="swatches"></div>
+    </div>
+    <div class="field">
+      <span>Pattern</span>
+      <div id="patterns" class="patterns">
+        <button data-pattern="0" class="selected">Solid</button>
+        <button data-pattern="1">Stripes</button>
+        <button data-pattern="2">Dots</button>
+        <button data-pattern="3">Two-tone</button>
+      </div>
+    </div>
+    <button id="play-btn" class="big-btn">PLAY</button>
+    <p id="menu-status" class="muted"></p>
+  </div>
+
+  <!-- ===== Lobby ===== -->
+  <div id="lobby" class="panel lobby hidden">
+    <h2>Waiting for the show…</h2>
+    <p id="lobby-timer" class="lobby-timer">Starting soon</p>
+    <p class="muted" id="lobby-sub">Empty slots are filled with bots when the show starts.</p>
+    <ul id="lobby-list"></ul>
+  </div>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hidden">
+    <div id="round-label" class="chip"></div>
+    <div id="timer" class="timer"></div>
+    <div id="counter" class="counter"></div>
+    <div id="status-chip" class="status-chip hidden"></div>
+    <div id="feed" class="feed"></div>
+    <div id="spectate" class="spectate hidden"></div>
+    <div id="ping" class="ping"></div>
+    <div id="help" class="help">
+      <b>WASD</b> move · <b>Space</b> jump · <b>C</b>/<b>Ctrl</b>/<b>RMB</b> dive · <b>Shift</b>/<b>E</b>/<b>LMB</b> grab · <b>Mouse</b> camera (click to lock, or drag) · <b>H</b> hide
+    </div>
+  </div>
+
+  <div id="intro-card" class="intro-card hidden">
+    <div id="intro-round" class="intro-round"></div>
+    <div id="intro-name" class="intro-name"></div>
+    <div id="intro-mode" class="intro-mode"></div>
+    <div id="intro-desc" class="intro-desc"></div>
+    <div id="intro-target" class="intro-target"></div>
+  </div>
+
+  <div id="banner" class="banner hidden"></div>
+  <div id="countdown" class="countdown hidden"></div>
+
+  <div id="results" class="panel results hidden">
+    <h2 id="results-title">Round Over</h2>
+    <p id="results-you"></p>
+    <div class="results-cols">
+      <div><h3>Qualified</h3><ul id="results-q"></ul></div>
+      <div><h3>Eliminated</h3><ul id="results-x"></ul></div>
+    </div>
+  </div>
+
+  <div id="winner" class="winner hidden">
+    <div class="crown-icon">👑</div>
+    <div id="winner-name" class="winner-name"></div>
+    <div id="winner-sub" class="winner-sub"></div>
+  </div>
+
+  <script type="module">
+// js/main.js
+import * as THREE5 from "three";
+
+// shared/constants.js
+var TICK_RATE = 60;
+var SNAPSHOT_RATE = 20;
+var INPUT_RATE = 30;
+var MAX_PLAYERS = 20;
+var INTERP_DELAY = 0.1;
+var PHYS = {
+  gravity: -25,
+  capsuleHalf: 0.4,
+  // half-height of the cylindrical part
+  capsuleRadius: 0.45,
+  // total bean height = 2*(half+radius) = 1.7
+  runSpeed: 7.5,
+  accelGround: 45,
+  accelAir: 14,
+  accelSlime: 10,
+  // slippery surfaces: low traction
+  jumpVel: 10,
+  diveSpeed: 12,
+  diveUp: 4.5,
+  tumbleTime: 0.7,
+  stunTime: 0.9,
+  grabRange: 1.6,
+  grabMaxTime: 3,
+  grabbedSlow: 0.45,
+  hitCooldown: 0.35,
+  respawnInvuln: 1.5,
+  crownReach: 1.7,
+  maxFallSpeed: -40
+};
+var PLAYER_STATE = {
+  NORMAL: 0,
+  AIR: 1,
+  DIVE: 2,
+  TUMBLE: 3,
+  GRAB: 4,
+  QUALIFIED: 5,
+  ELIMINATED: 6
+};
+var GAME_STATE = {
+  LOBBY: "lobby",
+  INTRO: "intro",
+  COUNTDOWN: "countdown",
+  PLAYING: "playing",
+  ROUND_END: "round_end",
+  WINNER: "winner"
+};
+var MODES = {
+  RACE: "race",
+  SURVIVAL: "survival",
+  FINAL: "final"
+};
+var TIMINGS = {
+  lobbyWait: 10,
+  // seconds after first human joins before the show starts
+  intro: 4,
+  countdown: 3,
+  roundEnd: 6,
+  winner: 10
+};
+var BEAN_COLORS = [
+  "#ff5fa2",
+  "#ffb627",
+  "#4cc9f0",
+  "#7bd389",
+  "#b388ff",
+  "#ff6b6b",
+  "#f9f871",
+  "#00c2a8",
+  "#ff9f1c",
+  "#6a8dff",
+  "#e36bff",
+  "#9ef01a"
+];
+var BOT_NAMES = [
+  "JellyBean",
+  "Wobbles",
+  "SirTumble",
+  "Bouncy",
+  "Noodle",
+  "Pudding",
+  "Gumdrop",
+  "Squishy",
+  "Marsh",
+  "Bloop",
+  "Doodle",
+  "Taffy",
+  "Pickle",
+  "Mochi",
+  "Biscuit",
+  "Sprout",
+  "Waffle",
+  "Zippy",
+  "Kiwi",
+  "Nugget",
+  "Pepper",
+  "Boba",
+  "Churro",
+  "Fizz"
+];
+
+// shared/math.js
+var DEG = Math.PI / 180;
+function quatIdentity() {
+  return [0, 0, 0, 1];
+}
+function quatFromAxisAngle(ax, ay, az, angle) {
+  const len = Math.hypot(ax, ay, az) || 1;
+  const s = Math.sin(angle / 2) / len;
+  return [ax * s, ay * s, az * s, Math.cos(angle / 2)];
+}
+function quatMul(a, b) {
+  const [ax, ay, az, aw] = a;
+  const [bx, by, bz, bw] = b;
+  return [
+    aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz
+  ];
+}
+function quatFromEulerDeg(e) {
+  if (!e) return quatIdentity();
+  const qx = quatFromAxisAngle(1, 0, 0, (e[0] || 0) * DEG);
+  const qy = quatFromAxisAngle(0, 1, 0, (e[1] || 0) * DEG);
+  const qz = quatFromAxisAngle(0, 0, 1, (e[2] || 0) * DEG);
+  return quatMul(quatMul(qx, qy), qz);
+}
+function rotateVec(q, v) {
+  const [qx, qy, qz, qw] = q;
+  const [vx, vy, vz] = v;
+  const ix = qw * vx + qy * vz - qz * vy;
+  const iy = qw * vy + qz * vx - qx * vz;
+  const iz = qw * vz + qx * vy - qy * vx;
+  const iw = -qx * vx - qy * vy - qz * vz;
+  return [
+    ix * qw + iw * -qx + iy * -qz - iz * -qy,
+    iy * qw + iw * -qy + iz * -qx - ix * -qz,
+    iz * qw + iw * -qz + ix * -qy - iy * -qx
+  ];
+}
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+function angleLerp(a, b, t) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function() {
+    a = a + 1831565813 >>> 0;
+    let t = a;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function kinematicPose(obj, t) {
+  const base = quatFromEulerDeg(obj.rot);
+  switch (obj.type) {
+    case "sweeper": {
+      const angle = obj.speed * t + obj.phase;
+      return {
+        pos: [obj.pos[0], obj.pos[1] + obj.height, obj.pos[2]],
+        quat: quatMul(base, quatFromAxisAngle(0, 1, 0, angle))
+      };
+    }
+    case "pendulum": {
+      const angle = obj.amplitude * DEG * Math.sin(2 * Math.PI * t / obj.period + obj.phase);
+      return {
+        pos: [obj.pivot[0], obj.pivot[1], obj.pivot[2]],
+        quat: quatFromAxisAngle(obj.axis[0], obj.axis[1], obj.axis[2], angle)
+      };
+    }
+    case "mover": {
+      const s = 0.5 - 0.5 * Math.cos(2 * Math.PI * t / obj.period + obj.phase);
+      return {
+        pos: [lerp(obj.from[0], obj.to[0], s), lerp(obj.from[1], obj.to[1], s), lerp(obj.from[2], obj.to[2], s)],
+        quat: base
+      };
+    }
+    default:
+      return null;
+  }
+}
+function pendulumBallPos(obj, t) {
+  const pose = kinematicPose(obj, t);
+  const off = rotateVec(pose.quat, [0, -obj.length, 0]);
+  return [pose.pos[0] + off[0], pose.pos[1] + off[1], pose.pos[2] + off[2]];
+}
+function pointInBox(p, min, max) {
+  return p[0] >= min[0] && p[0] <= max[0] && p[1] >= min[1] && p[1] <= max[1] && p[2] >= min[2] && p[2] <= max[2];
+}
+
+// server/LevelBuilder.js
+var v3 = (a) => ({ x: a[0], y: a[1], z: a[2] });
+var q4 = (q) => ({ x: q[0], y: q[1], z: q[2], w: q[3] });
+var DEG2 = Math.PI / 180;
+var LevelBuilder = class {
+  constructor(RAPIER, world, level, seed = Date.now()) {
+    this.R = RAPIER;
+    this.world = world;
+    this.level = level;
+    this.rng = mulberry32(seed);
+    this.colliderInfo = /* @__PURE__ */ new Map();
+    this.kinematics = [];
+    this.kinematicById = /* @__PURE__ */ new Map();
+    this.seesaws = [];
+    this.tiles = /* @__PURE__ */ new Map();
+    this.triggeredTiles = [];
+    this.spawners = [];
+    this.balls = /* @__PURE__ */ new Map();
+    this.ballSeq = 1;
+    this.events = [];
+    this.slimeY = level.slime ? level.slime.y : -Infinity;
+    for (const obj of level.objects) this._build(obj);
+  }
+  // ---------------------------------------------------------------- building
+  _register(collider, info) {
+    this.colliderInfo.set(collider.handle, info);
+    return collider;
+  }
+  _fixedBody(pos, quat = [0, 0, 0, 1]) {
+    const desc = this.R.RigidBodyDesc.fixed().setTranslation(pos[0], pos[1], pos[2]).setRotation(q4(quat));
+    return this.world.createRigidBody(desc);
+  }
+  _kinematicBody(obj) {
+    const pose = kinematicPose(obj, 0);
+    const desc = this.R.RigidBodyDesc.kinematicPositionBased().setTranslation(pose.pos[0], pose.pos[1], pose.pos[2]).setRotation(q4(pose.quat));
+    const body = this.world.createRigidBody(desc);
+    const k = { obj, body, pos: pose.pos.slice(), quat: pose.quat, vel: [0, 0, 0] };
+    this.kinematics.push(k);
+    this.kinematicById.set(obj.id, k);
+    return k;
+  }
+  _hazardEvents(desc) {
+    return desc.setActiveEvents(this.R.ActiveEvents.COLLISION_EVENTS);
+  }
+  _build(obj) {
+    const R = this.R;
+    switch (obj.type) {
+      case "platform": {
+        const body = this._fixedBody(obj.pos, quatFromEulerDeg(obj.rot));
+        const c = this.world.createCollider(R.ColliderDesc.cuboid(obj.size[0] / 2, obj.size[1] / 2, obj.size[2] / 2).setFriction(0.6), body);
+        this._register(c, { kind: "ground", surface: obj.surface, obj });
+        break;
+      }
+      case "cylinder": {
+        const body = this._fixedBody(obj.pos);
+        const c = this.world.createCollider(R.ColliderDesc.cylinder(obj.height / 2, obj.radius).setFriction(0.6), body);
+        this._register(c, { kind: "ground", surface: obj.surface, obj });
+        break;
+      }
+      case "sweeper": {
+        if (obj.pillar) {
+          const h = obj.height + 0.4;
+          const body = this._fixedBody([obj.pos[0], obj.pos[1] + h / 2, obj.pos[2]]);
+          const c = this.world.createCollider(R.ColliderDesc.cylinder(h / 2, 0.5), body);
+          this._register(c, { kind: "ground", surface: "normal", obj });
+        }
+        const k = this._kinematicBody(obj);
+        for (let a = 0; a < obj.arms; a++) {
+          const rot = quatFromAxisAngle(0, 1, 0, a * Math.PI / obj.arms);
+          const desc = R.ColliderDesc.cuboid(obj.length / 2, obj.thickness / 2, obj.thickness / 2).setRotation(q4(rot));
+          const c = this.world.createCollider(this._hazardEvents(desc), k.body);
+          this._register(c, { kind: "sweeper", obj, k });
+        }
+        break;
+      }
+      case "pendulum": {
+        const k = this._kinematicBody(obj);
+        const desc = R.ColliderDesc.ball(obj.ballRadius).setTranslation(0, -obj.length, 0);
+        const c = this.world.createCollider(this._hazardEvents(desc), k.body);
+        this._register(c, { kind: "pendulum", obj, k });
+        break;
+      }
+      case "mover": {
+        const k = this._kinematicBody(obj);
+        const c = this.world.createCollider(R.ColliderDesc.cuboid(obj.size[0] / 2, obj.size[1] / 2, obj.size[2] / 2), k.body);
+        this._register(c, { kind: "ground", surface: obj.surface, obj, moving: k });
+        break;
+      }
+      case "seesaw": {
+        const desc = R.RigidBodyDesc.kinematicPositionBased().setTranslation(obj.pos[0], obj.pos[1], obj.pos[2]);
+        const body = this.world.createRigidBody(desc);
+        const s = { obj, body, angle: 0, load: 0 };
+        const c = this.world.createCollider(R.ColliderDesc.cuboid(obj.size[0] / 2, obj.size[1] / 2, obj.size[2] / 2), body);
+        this._register(c, { kind: "ground", surface: "normal", obj, seesaw: s });
+        this.seesaws.push(s);
+        break;
+      }
+      case "hexfloor": {
+        const body = this._fixedBody([0, 0, 0]);
+        for (const t of this.level.tiles) {
+          if (t.floor !== obj.id) continue;
+          const desc = R.ColliderDesc.cylinder(t.thickness / 2, t.size * 0.92).setTranslation(t.pos[0], t.pos[1], t.pos[2]);
+          const c = this.world.createCollider(desc, body);
+          const tile = { id: t.id, pos: t.pos, collider: c, fallDelay: t.fallDelay, triggeredAt: null, fallen: false };
+          this._register(c, { kind: "ground", surface: "normal", obj, tile });
+          this.tiles.set(t.id, tile);
+        }
+        break;
+      }
+      case "bumper": {
+        const body = this._fixedBody([obj.pos[0], obj.pos[1] + obj.height / 2, obj.pos[2]]);
+        const c = this.world.createCollider(this._hazardEvents(R.ColliderDesc.cylinder(obj.height / 2, obj.radius)), body);
+        this._register(c, { kind: "bumper", obj });
+        break;
+      }
+      case "conveyor": {
+        const body = this._fixedBody(obj.pos, quatFromEulerDeg(obj.rot));
+        const c = this.world.createCollider(R.ColliderDesc.cuboid(obj.size[0] / 2, obj.size[1] / 2, obj.size[2] / 2), body);
+        this._register(c, { kind: "ground", surface: "normal", obj, conveyor: [obj.dir[0] * obj.speed, 0, obj.dir[1] * obj.speed] });
+        break;
+      }
+      case "spawner": {
+        this.spawners.push({ obj, next: obj.startDelay });
+        break;
+      }
+      default:
+        throw new Error(`LevelBuilder: unsupported type ${obj.type}`);
+    }
+  }
+  // ---------------------------------------------------------------- queries
+  /** Velocity a player standing on this collider should inherit (moving platforms / belts). */
+  groundVelocity(info) {
+    if (!info) return [0, 0, 0];
+    if (info.moving) return info.moving.vel;
+    if (info.conveyor) return info.conveyor;
+    return [0, 0, 0];
+  }
+  kinematicPos(id) {
+    const k = this.kinematicById.get(id);
+    return k ? k.pos : null;
+  }
+  sweepers() {
+    return this.kinematics.filter((k) => k.obj.type === "sweeper");
+  }
+  // ---------------------------------------------------------------- per tick
+  /**
+   * @param t        level time (obstacles animate from level load)
+   * @param playTime time since the round started (spawners, rising slime)
+   * @param players  active ServerPlayers (with groundInfo filled by the controller)
+   */
+  update(t, playTime, dt, players, playing) {
+    for (const k of this.kinematics) {
+      const pose = kinematicPose(k.obj, t + dt);
+      k.vel = [(pose.pos[0] - k.pos[0]) / dt, (pose.pos[1] - k.pos[1]) / dt, (pose.pos[2] - k.pos[2]) / dt];
+      k.pos = pose.pos;
+      k.quat = pose.quat;
+      k.body.setNextKinematicTranslation(v3(pose.pos));
+      k.body.setNextKinematicRotation(q4(pose.quat));
+    }
+    for (const s of this.seesaws) {
+      const o = s.obj;
+      let load = 0;
+      for (const p of players) {
+        if (p.groundInfo?.seesaw !== s || !p.body) continue;
+        const pos = p.body.translation();
+        load += o.axis === "z" ? pos.x - o.pos[0] : pos.z - o.pos[2];
+      }
+      const max = o.maxAngle * DEG2;
+      const target = clamp((o.axis === "z" ? -load : load) * o.sensitivity, -max, max);
+      s.angle += (target - s.angle) * Math.min(1, o.stiffness * dt);
+      const q = o.axis === "z" ? quatFromAxisAngle(0, 0, 1, s.angle) : quatFromAxisAngle(1, 0, 0, s.angle);
+      s.body.setNextKinematicRotation(q4(q));
+    }
+    if (!playing) return;
+    for (const p of players) {
+      const tile = p.groundInfo?.tile;
+      if (tile && tile.triggeredAt === null) {
+        tile.triggeredAt = t;
+        this.triggeredTiles.push(tile);
+        this.events.push(["tw", tile.id]);
+      }
+    }
+    if (this.triggeredTiles.length) {
+      this.triggeredTiles = this.triggeredTiles.filter((tile) => {
+        if (t - tile.triggeredAt >= tile.fallDelay) {
+          tile.fallen = true;
+          tile.collider.setEnabled(false);
+          this.events.push(["tf", tile.id]);
+          return false;
+        }
+        return true;
+      });
+    }
+    const sl = this.level.slime;
+    if (sl && sl.riseRate) {
+      this.slimeY = Math.min(sl.maxY, sl.y + sl.riseRate * Math.max(0, playTime - sl.riseDelay));
+    }
+    for (const sp of this.spawners) {
+      if (playTime >= sp.next) {
+        this._spawnBall(sp.obj, t);
+        sp.next = playTime + sp.obj.interval * (0.75 + this.rng() * 0.5);
+      }
+    }
+    for (const [id, b] of this.balls) {
+      const p = b.body.translation();
+      if (p.y < this.level.killY || p.y < this.slimeY - 2 || t - b.born > b.lifetime) {
+        this.colliderInfo.delete(b.collider.handle);
+        this.world.removeRigidBody(b.body);
+        this.balls.delete(id);
+        this.events.push(["bx", id]);
+      }
+    }
+  }
+  _spawnBall(obj, t) {
+    const R = this.R;
+    const id = this.ballSeq++;
+    const r = lerp(obj.radius[0], obj.radius[1], this.rng());
+    const x = obj.pos[0] + (this.rng() * 2 - 1) * obj.spread[0];
+    const z = obj.pos[2] + (this.rng() * 2 - 1) * obj.spread[1];
+    const body = this.world.createRigidBody(
+      R.RigidBodyDesc.dynamic().setTranslation(x, obj.pos[1], z).setCcdEnabled(true).setLinvel(obj.impulse[0], obj.impulse[1], obj.impulse[2]).setAngvel({ x: this.rng() * 4 - 2, y: 0, z: this.rng() * 4 - 2 })
+    );
+    const density = obj.kind === "boulder" ? 3 : 1;
+    const collider = this.world.createCollider(
+      R.ColliderDesc.ball(r).setDensity(density).setFriction(0.8).setRestitution(obj.kind === "fruit" ? 0.5 : 0.1),
+      body
+    );
+    const ball = { id, body, collider, r, kind: obj.kind, color: obj.color, born: t, lifetime: obj.lifetime };
+    this._register(collider, { kind: "ball", ball });
+    this.balls.set(id, ball);
+    this.events.push(["b", id, +r.toFixed(2), obj.kind, obj.color]);
+  }
+  // ---------------------------------------------------------------- network state
+  seesawState() {
+    return this.seesaws.map((s) => [s.obj.id, +s.angle.toFixed(3)]);
+  }
+  ballState() {
+    const out = [];
+    for (const b of this.balls.values()) {
+      const p = b.body.translation();
+      const q = b.body.rotation();
+      out.push([b.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +q.x.toFixed(3), +q.y.toFixed(3), +q.z.toFixed(3), +q.w.toFixed(3)]);
+    }
+    return out;
+  }
+  /** Full state for late joiners: which tiles already fell, balls alive. */
+  syncState() {
+    const fallen = [];
+    for (const t of this.tiles.values()) if (t.fallen) fallen.push(t.id);
+    const balls = [...this.balls.values()].map((b) => [b.id, +b.r.toFixed(2), b.kind, b.color]);
+    return { fallen, balls };
+  }
+};
+
+// server/Player.js
+var COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+function sanitizeName(name, fallback) {
+  const clean = String(name ?? "").replace(/[^\p{L}\p{N} _-]/gu, "").trim().slice(0, 16);
+  return clean || fallback;
+}
+function sanitizeColor(c, fallback) {
+  return COLOR_RE.test(String(c)) ? String(c) : fallback;
+}
+var ServerPlayer = class {
+  constructor({ id, nid, name, color, pattern = 0, isBot = false, socket = null, brain = null }) {
+    this.id = id;
+    this.nid = nid;
+    this.name = name;
+    this.color = color;
+    this.pattern = pattern;
+    this.isBot = isBot;
+    this.socket = socket;
+    this.brain = brain;
+    this.wins = 0;
+    this.spectator = false;
+    this.input = { mx: 0, mz: 0, grab: false, yaw: 0 };
+    this.lastJumpCount = 0;
+    this.lastDiveCount = 0;
+    this.lastInputSeq = 0;
+    this.resetRound();
+  }
+  resetRound() {
+    this.body = null;
+    this.collider = null;
+    this.active = false;
+    this.participant = false;
+    this.state = PLAYER_STATE.NORMAL;
+    this.yaw = 0;
+    this.grounded = false;
+    this.groundInfo = null;
+    this.airTime = 0;
+    this.stateTimer = 0;
+    this.tumbleFor = 0;
+    this.stunTimer = 0;
+    this.hitCooldown = 0;
+    this.invuln = 0;
+    this.jumpBuffer = 0;
+    this.diveBuffer = 0;
+    this.grabTarget = null;
+    this.grabbedBy = null;
+    this.grabTime = 0;
+    this.grabCooldown = 0;
+    this.checkpoint = -1;
+    this.qualified = false;
+    this.eliminated = false;
+    this.finishTime = null;
+    this.elimTime = null;
+  }
+  /** Apply a client input packet. Jump/dive are monotonically increasing press counters,
+   *  so a press is never lost even if packets arrive out of order or merge. */
+  applyInput(msg) {
+    if (!msg || typeof msg !== "object") return;
+    const seq = Number(msg.seq) || 0;
+    if (seq && seq < this.lastInputSeq) return;
+    this.lastInputSeq = seq;
+    let mx = Number(msg.mx) || 0;
+    let mz = Number(msg.mz) || 0;
+    const len = Math.hypot(mx, mz);
+    if (len > 1) {
+      mx /= len;
+      mz /= len;
+    }
+    this.input.mx = mx;
+    this.input.mz = mz;
+    this.input.grab = !!msg.grab;
+    this.input.yaw = Number(msg.yaw) || 0;
+    const jc = Number(msg.jc) || 0;
+    const dc = Number(msg.dc) || 0;
+    if (jc > this.lastJumpCount) {
+      this.jumpBuffer = 0.15;
+      this.lastJumpCount = jc;
+    }
+    if (dc > this.lastDiveCount) {
+      this.diveBuffer = 0.15;
+      this.lastDiveCount = dc;
+    }
+  }
+  rosterEntry() {
+    return { nid: this.nid, name: this.name, color: this.color, pattern: this.pattern, isBot: this.isBot, wins: this.wins, spectator: this.spectator };
+  }
+};
+
+// server/BotBrain.js
+var BotBrain = class {
+  constructor(rng) {
+    this.rng = rng;
+    this.skill = 0.5 + rng() * 0.5;
+    this.reset();
+  }
+  reset() {
+    this.wi = 0;
+    this.lateral = (this.rng() * 2 - 1) * 1.8;
+    this.thinkTimer = 0;
+    this.stuckTimer = 0;
+    this.lastPos = null;
+    this.wanderTile = null;
+    this.wanderTimer = 0;
+    this.dir = [0, 0];
+    this.grabHold = 0;
+    this.jitter = 0;
+  }
+  /** After a respawn, resume from the closest static waypoint. */
+  onRespawn(p, level) {
+    const pos = p.body.translation();
+    let best = 0, bestD = Infinity;
+    level.botPath.forEach((w, i) => {
+      if (!w.p) return;
+      const d = Math.hypot(w.p[0] - pos.x, w.p[2] - pos.z) + Math.abs(w.p[1] - pos.y) * 2;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    this.wi = best;
+    this.lastPos = null;
+  }
+  update(p, ctx) {
+    if (!p.body) return;
+    const { level, builder, dt, t } = ctx;
+    const pos = p.body.translation();
+    this.thinkTimer -= dt;
+    const thinkEvery = 0.05 + (1 - this.skill) * 0.15;
+    if (this.thinkTimer <= 0) {
+      this.thinkTimer = thinkEvery;
+      p.input.grab = false;
+      if (level.mode === MODES.SURVIVAL || !level.botPath.length) this._thinkSurvival(p, pos, ctx);
+      else this._thinkPath(p, pos, ctx);
+      this._dodgeSweepers(p, pos, builder);
+      this._unstick(p, pos, thinkEvery);
+      if (p.grounded && this.rng() < 0.01 * (1.2 - this.skill)) p.jumpBuffer = 0.15;
+      if (this.grabHold <= 0 && this.rng() < 4e-3) this.grabHold = 0.8;
+      this.jitter = (this.rng() * 2 - 1) * (1 - this.skill) * 0.6;
+    }
+    this.grabHold -= dt;
+    const c = Math.cos(this.jitter), s = Math.sin(this.jitter);
+    p.input.mx = this.dir[0] * c - this.dir[1] * s;
+    p.input.mz = this.dir[0] * s + this.dir[1] * c;
+    p.input.grab = p.input.grab || this.grabHold > 0;
+    if (p.state === PLAYER_STATE.TUMBLE) p.input.grab = false;
+  }
+  _waypointTarget(w, builder, lateral) {
+    if (w.track) {
+      const kp = builder.kinematicPos(w.track);
+      return [kp[0] + w.offset[0], kp[1] + w.offset[1], kp[2] + w.offset[2]];
+    }
+    return [w.p[0] + lateral, w.p[1], w.p[2]];
+  }
+  _thinkPath(p, pos, ctx) {
+    const { level, builder } = ctx;
+    const path = level.botPath;
+    const w = path[Math.min(this.wi, path.length - 1)];
+    const narrow = w.track || w.waitFor || w.grab;
+    const lateral = narrow ? 0 : w.jump ? this.lateral * 0.4 : this.lateral;
+    const target = this._waypointTarget(w, builder, lateral);
+    const dx = target[0] - pos.x, dz = target[2] - pos.z;
+    const dist = Math.hypot(dx, dz);
+    p.input.grab = false;
+    if (dist < w.radius) {
+      if (w.waitFor) {
+        const wp = builder.kinematicPos(w.waitFor);
+        const tolerance = w.within * (0.6 + this.skill * 0.6);
+        if (Math.abs(wp[0] - pos.x) > tolerance) {
+          const k = Math.min(1, dist / w.radius);
+          this.dir = dist > 0.01 ? [dx / dist * k, dz / dist * k] : [0, 0];
+          return;
+        }
+      }
+      if (w.jump && p.grounded) p.jumpBuffer = 0.15;
+      if (w.grab) p.input.grab = true;
+      if (this.wi < path.length - 1) this.wi++;
+    }
+    if (target[1] - pos.y > 1.3 && dist < 3 && p.grounded) p.jumpBuffer = 0.15;
+    if (w.grab && dist < 2.5) {
+      p.input.grab = true;
+      if (p.grounded && this.rng() < 0.15) p.jumpBuffer = 0.15;
+    }
+    if (this.wi === path.length - 1 && dist < 6 && !w.grab && this.rng() < 0.04) p.diveBuffer = 0.15;
+    this.dir = dist > 0.01 ? [dx / dist, dz / dist] : [0, 0];
+  }
+  _thinkSurvival(p, pos, ctx) {
+    const { builder, level } = ctx;
+    this.wanderTimer -= this.thinkTimer;
+    const tiles = builder.tiles;
+    if (!tiles.size) {
+      const c = level.spawn.center;
+      if (!this.wanderTile || this.wanderTimer <= 0) {
+        this.wanderTile = { pos: [c[0] + (this.rng() * 2 - 1) * level.spawn.spread[0], c[1], c[2] + (this.rng() * 2 - 1) * level.spawn.spread[2]], fallen: false };
+        this.wanderTimer = 2 + this.rng() * 2;
+      }
+    } else {
+      const wt2 = this.wanderTile;
+      const reached = wt2 && Math.hypot(wt2.pos[0] - pos.x, wt2.pos[2] - pos.z) < 0.8;
+      if (!wt2 || wt2.fallen || wt2.triggeredAt !== null || reached || this.wanderTimer <= 0) {
+        const feet = pos.y - 0.85;
+        let layerY = -Infinity;
+        for (const tl of tiles.values()) if (!tl.fallen && tl.pos[1] <= feet + 0.3 && tl.pos[1] > layerY) layerY = tl.pos[1];
+        const cand = [];
+        for (const tl of tiles.values()) {
+          if (tl.fallen || tl.triggeredAt !== null || Math.abs(tl.pos[1] - layerY) > 0.5) continue;
+          const d2 = Math.hypot(tl.pos[0] - pos.x, tl.pos[2] - pos.z);
+          if (d2 > 1.2 && d2 < 7) cand.push(tl);
+        }
+        this.wanderTile = cand.length ? cand[Math.floor(this.rng() * cand.length)] : null;
+        this.wanderTimer = 1 + this.rng() * 1.5;
+      }
+    }
+    const wt = this.wanderTile;
+    if (!wt) {
+      this.dir = [0, 0];
+      return;
+    }
+    const dx = wt.pos[0] - pos.x, dz = wt.pos[2] - pos.z;
+    const d = Math.hypot(dx, dz);
+    this.dir = d > 0.01 ? [dx / d, dz / d] : [0, 0];
+    if (p.grounded && p.groundInfo?.tile?.triggeredAt !== null && p.groundInfo?.tile && this.rng() < 0.15 * this.skill) p.jumpBuffer = 0.15;
+  }
+  _dodgeSweepers(p, pos, builder) {
+    if (!p.grounded) return;
+    for (const k of builder.sweepers()) {
+      const o = k.obj;
+      if (Math.abs(pos.y - 0.85 - (k.pos[1] - o.thickness)) > 1.4) continue;
+      const rx = pos.x - k.pos[0], rz = pos.z - k.pos[2];
+      if (Math.hypot(rx, rz) > o.length / 2 + 0.6) continue;
+      for (let a = 0; a < o.arms; a++) {
+        const dirW = rotateVec(k.quat, [Math.cos(a * Math.PI / o.arms), 0, -Math.sin(a * Math.PI / o.arms)]);
+        const perp = Math.abs(rx * dirW[2] - rz * dirW[0]);
+        if (perp < 1 + this.skill * 0.6 && this.rng() < this.skill) {
+          p.jumpBuffer = 0.15;
+          return;
+        }
+      }
+    }
+  }
+  _unstick(p, pos, interval) {
+    this.stuckTimer += interval;
+    if (this.stuckTimer < 1.2) return;
+    this.stuckTimer = 0;
+    if (this.lastPos) {
+      const moved = Math.hypot(pos.x - this.lastPos[0], pos.z - this.lastPos[2]);
+      const wantsToMove = Math.hypot(this.dir[0], this.dir[1]) > 0.5;
+      if (moved < 0.6 && wantsToMove && p.state !== PLAYER_STATE.TUMBLE) {
+        p.jumpBuffer = 0.15;
+        this.lateral = (this.rng() * 2 - 1) * 1.8;
+      }
+    }
+    this.lastPos = [pos.x, pos.y, pos.z];
+  }
+};
+
+// server/PlayerController.js
+var RAY_OFFSETS = [[0, 0], [0.28, 0], [-0.28, 0], [0, 0.28], [0, -0.28]];
+var FOOT = PHYS.capsuleHalf + PHYS.capsuleRadius;
+function createCharacterBody(R, world, builder, p, pos) {
+  const body = world.createRigidBody(
+    R.RigidBodyDesc.dynamic().setTranslation(pos[0], pos[1], pos[2]).lockRotations().setCcdEnabled(true).setCanSleep(false)
+  );
+  const collider = world.createCollider(
+    R.ColliderDesc.capsule(PHYS.capsuleHalf, PHYS.capsuleRadius).setFriction(0).setFrictionCombineRule(R.CoefficientCombineRule.Min).setRestitution(0).setDensity(1).setActiveEvents(R.ActiveEvents.COLLISION_EVENTS),
+    body
+  );
+  builder.colliderInfo.set(collider.handle, { kind: "player", player: p });
+  p.body = body;
+  p.collider = collider;
+  p.active = true;
+}
+function removeCharacterBody(world, builder, p) {
+  releaseGrab(p);
+  if (p.grabbedBy) releaseGrab(p.grabbedBy);
+  if (p.body) {
+    builder.colliderInfo.delete(p.collider.handle);
+    world.removeRigidBody(p.body);
+  }
+  p.body = null;
+  p.collider = null;
+  p.active = false;
+}
+function groundCheck(ctx, p, pos) {
+  const { R, world, builder } = ctx;
+  for (const [ox, oz] of RAY_OFFSETS) {
+    const ray = new R.Ray({ x: pos.x + ox, y: pos.y, z: pos.z + oz }, { x: 0, y: -1, z: 0 });
+    const hit = world.castRay(ray, FOOT + 0.12, true, void 0, void 0, p.collider, p.body);
+    if (!hit) continue;
+    const info = builder.colliderInfo.get(hit.collider.handle);
+    if (!info || info.tile?.fallen) continue;
+    return info;
+  }
+  return null;
+}
+function releaseGrab(p) {
+  if (p.grabTarget) {
+    if (p.grabTarget.grabbedBy === p) p.grabTarget.grabbedBy = null;
+    p.grabTarget = null;
+    p.grabCooldown = 0.6;
+  }
+}
+function knockback(p, vx, vy, vz, stun, events) {
+  if (!p.body || p.invuln > 0 || p.hitCooldown > 0) return false;
+  p.body.setLinvel({ x: vx, y: vy, z: vz }, true);
+  p.stunTimer = stun;
+  p.state = PLAYER_STATE.TUMBLE;
+  p.stateTimer = 0;
+  p.tumbleFor = stun;
+  p.hitCooldown = PHYS.hitCooldown;
+  p.grounded = false;
+  releaseGrab(p);
+  const t = p.body.translation();
+  events.push(["h", p.nid, +t.x.toFixed(2), +t.y.toFixed(2), +t.z.toFixed(2)]);
+  return true;
+}
+function respawnAt(p, point, rng, events) {
+  if (!p.body) return;
+  releaseGrab(p);
+  p.body.setTranslation({ x: point[0] + (rng() * 2 - 1) * 1.5, y: point[1], z: point[2] + (rng() * 2 - 1) * 0.8 }, true);
+  p.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+  p.state = PLAYER_STATE.NORMAL;
+  p.stunTimer = 0;
+  p.stateTimer = 0;
+  p.invuln = PHYS.respawnInvuln;
+  p.yaw = 0;
+  events.push(["r", p.nid]);
+}
+function stepCharacter(p, ctx) {
+  const body = p.body;
+  if (!body) return;
+  const { dt, builder, events } = ctx;
+  const pos = body.translation();
+  const v = body.linvel();
+  p.stunTimer = Math.max(0, p.stunTimer - dt);
+  p.hitCooldown = Math.max(0, p.hitCooldown - dt);
+  p.invuln = Math.max(0, p.invuln - dt);
+  p.jumpBuffer = Math.max(0, p.jumpBuffer - dt);
+  p.diveBuffer = Math.max(0, p.diveBuffer - dt);
+  p.grabCooldown = Math.max(0, p.grabCooldown - dt);
+  p.stateTimer += dt;
+  const info = groundCheck(ctx, p, pos);
+  p.grounded = !!info && v.y < 3.5;
+  p.groundInfo = p.grounded ? info : null;
+  if (p.grounded) p.airTime = 0;
+  else p.airTime += dt;
+  if (p.state === PLAYER_STATE.DIVE && p.grounded && p.stateTimer > 0.12) {
+    p.state = PLAYER_STATE.TUMBLE;
+    p.stateTimer = 0;
+    p.tumbleFor = PHYS.tumbleTime;
+  } else if (p.state === PLAYER_STATE.TUMBLE && p.stunTimer <= 0 && (p.grounded && p.stateTimer >= p.tumbleFor || p.stateTimer > p.tumbleFor + 1.5)) {
+    p.state = PLAYER_STATE.NORMAL;
+    p.stateTimer = 0;
+  }
+  const gv = builder.groundVelocity(p.groundInfo);
+  const slime = p.groundInfo?.surface === "slime";
+  const hasInput = Math.hypot(p.input.mx, p.input.mz) > 0.1;
+  const canControl = !ctx.frozen && p.stunTimer <= 0 && p.state !== PLAYER_STATE.DIVE && p.state !== PLAYER_STATE.TUMBLE;
+  let vx = v.x, vy = v.y, vz = v.z;
+  if (ctx.frozen) {
+    vx = gv[0];
+    vz = gv[2];
+  } else if (canControl) {
+    let speed = PHYS.runSpeed;
+    if (p.grabTarget) speed *= 0.55;
+    if (p.grabbedBy) speed *= PHYS.grabbedSlow;
+    let accel = p.grounded ? PHYS.accelGround : PHYS.accelAir;
+    if (p.grounded && slime) accel = hasInput ? PHYS.accelSlime : 2;
+    const tx = p.input.mx * speed + (p.grounded ? gv[0] : 0);
+    const tz = p.input.mz * speed + (p.grounded ? gv[2] : 0);
+    let dx = tx - vx, dz = tz - vz;
+    const dl = Math.hypot(dx, dz);
+    const maxd = accel * dt;
+    if (dl > maxd) {
+      dx *= maxd / dl;
+      dz *= maxd / dl;
+    }
+    vx += dx;
+    vz += dz;
+    if (hasInput) p.yaw = angleLerp(p.yaw, Math.atan2(p.input.mx, p.input.mz), Math.min(1, 14 * dt));
+  } else if (p.grounded && p.state === PLAYER_STATE.TUMBLE) {
+    const k = Math.max(0, 1 - 5 * dt);
+    vx = gv[0] + (vx - gv[0]) * k;
+    vz = gv[2] + (vz - gv[2]) * k;
+  }
+  if (canControl && p.jumpBuffer > 0 && (p.grounded || p.airTime < 0.1)) {
+    vy = PHYS.jumpVel + Math.max(0, gv[1]);
+    p.jumpBuffer = 0;
+    p.grounded = false;
+    p.airTime = 0.2;
+    events.push(["j", p.nid]);
+  }
+  if (!ctx.frozen && p.diveBuffer > 0 && p.stunTimer <= 0 && (p.state === PLAYER_STATE.NORMAL || p.state === PLAYER_STATE.AIR || p.state === PLAYER_STATE.GRAB)) {
+    const fx2 = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+    vx = fx2 * PHYS.diveSpeed + gv[0] * 0.5;
+    vz = fz * PHYS.diveSpeed + gv[2] * 0.5;
+    vy = p.grounded ? PHYS.diveUp : Math.max(vy, PHYS.diveUp * 0.6);
+    p.state = PLAYER_STATE.DIVE;
+    p.stateTimer = 0;
+    p.diveBuffer = 0;
+    releaseGrab(p);
+    events.push(["d", p.nid]);
+  }
+  if (p.state === PLAYER_STATE.NORMAL || p.state === PLAYER_STATE.AIR || p.state === PLAYER_STATE.GRAB) {
+    p.state = p.grabTarget ? PLAYER_STATE.GRAB : p.grounded ? PLAYER_STATE.NORMAL : PLAYER_STATE.AIR;
+  }
+  vy = Math.max(vy, PHYS.maxFallSpeed);
+  body.setLinvel({ x: vx, y: vy, z: vz }, true);
+}
+function updateGrab(p, players, dt, events) {
+  if (!p.body) return;
+  const wants = p.input.grab && p.stunTimer <= 0 && p.state !== PLAYER_STATE.DIVE && p.state !== PLAYER_STATE.TUMBLE;
+  if (!wants) {
+    releaseGrab(p);
+    return;
+  }
+  const pos = p.body.translation();
+  if (!p.grabTarget && p.grabCooldown <= 0) {
+    const fx2 = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+    let best = null, bestD = PHYS.grabRange;
+    for (const q2 of players) {
+      if (q2 === p || !q2.body || q2.grabbedBy) continue;
+      const qp2 = q2.body.translation();
+      const dx2 = qp2.x - pos.x, dy = qp2.y - pos.y, dz2 = qp2.z - pos.z;
+      const d2 = Math.hypot(dx2, dy, dz2);
+      if (d2 < bestD && Math.abs(dy) < 1.2 && (dx2 * fx2 + dz2 * fz) / (d2 || 1) > 0.25) {
+        best = q2;
+        bestD = d2;
+      }
+    }
+    if (best) {
+      p.grabTarget = best;
+      best.grabbedBy = p;
+      p.grabTime = 0;
+      events.push(["g", p.nid, best.nid]);
+    }
+  }
+  const q = p.grabTarget;
+  if (!q) return;
+  p.grabTime += dt;
+  if (!q.body || q.grabbedBy !== p || p.grabTime > PHYS.grabMaxTime) {
+    releaseGrab(p);
+    return;
+  }
+  const qp = q.body.translation();
+  const dx = pos.x - qp.x, dz = pos.z - qp.z;
+  const d = Math.hypot(dx, dz);
+  if (d > PHYS.grabRange * 1.8) {
+    releaseGrab(p);
+    return;
+  }
+  const pv = p.body.linvel();
+  const qv = q.body.linvel();
+  const pull = d > 1.1 ? (d - 1.1) * 8 : 0;
+  q.body.setLinvel({
+    x: qv.x + (pv.x - qv.x) * 0.15 + dx / (d || 1) * pull * dt,
+    y: qv.y,
+    z: qv.z + (pv.z - qv.z) * 0.15 + dz / (d || 1) * pull * dt
+  }, true);
+}
+
+// server/GameRoom.js
+var FOOT2 = PHYS.capsuleHalf + PHYS.capsuleRadius;
+var r2 = (v) => Math.round(v * 100) / 100;
+var GameRoom = class {
+  constructor({ id, io, RAPIER, playlist, onEmpty, options = {} }) {
+    this.id = id;
+    this.io = io;
+    this.R = RAPIER;
+    this.playlist = playlist;
+    this.onEmpty = onEmpty;
+    this.opts = {
+      lobbyWait: options.lobbyWait ?? TIMINGS.lobbyWait,
+      fillBots: options.fillBots ?? true,
+      maxPlayers: options.maxPlayers ?? MAX_PLAYERS
+    };
+    this.rng = mulberry32(Math.random() * 2 ** 31 | 0);
+    this.players = /* @__PURE__ */ new Map();
+    this.nidSeq = 1;
+    this.state = GAME_STATE.LOBBY;
+    this.stateTimer = this.opts.lobbyWait;
+    this.roundIndex = -1;
+    this.level = null;
+    this.world = null;
+    this.eventQueue = null;
+    this.builder = null;
+    this.levelTime = 0;
+    this.playTime = 0;
+    this.events = [];
+    this.snapAccum = 0;
+    this.participants = [];
+    this.nextParticipants = [];
+    this.qualifyTarget = 1;
+    this.crownWinner = null;
+    this.elimOrder = [];
+    this.qualifiedCount = 0;
+    this.destroyed = false;
+  }
+  // ================================================================ membership
+  get humans() {
+    return [...this.players.values()].filter((p) => !p.isBot);
+  }
+  isJoinable() {
+    return !this.destroyed && this.state === GAME_STATE.LOBBY && this.humans.length < this.opts.maxPlayers;
+  }
+  addHuman(socket, data = {}) {
+    const p = new ServerPlayer({
+      id: socket.id,
+      nid: this.nidSeq++,
+      name: sanitizeName(data.name, `Bean${Math.floor(Math.random() * 900 + 100)}`),
+      color: sanitizeColor(data.color, BEAN_COLORS[Math.floor(Math.random() * BEAN_COLORS.length)]),
+      pattern: Math.max(0, Math.min(3, Number(data.pattern) || 0)),
+      socket
+    });
+    this.players.set(p.id, p);
+    socket.join(this.id);
+    socket.emit("welcome", { nid: p.nid, roomId: this.id });
+    if (this.state === GAME_STATE.LOBBY) {
+      if (this.humans.length === 1) this.stateTimer = this.opts.lobbyWait;
+      if (this.humans.length >= this.opts.maxPlayers) this.stateTimer = Math.min(this.stateTimer, 3);
+    } else {
+      p.spectator = true;
+    }
+    this.broadcastRoster();
+    if (this.level) socket.emit("level", this.levelPacket());
+    this.sendState();
+    console.log(`[room ${this.id}] + ${p.name} (${this.humans.length} humans)`);
+  }
+  removeHuman(id) {
+    const p = this.players.get(id);
+    if (!p) return;
+    if (p.body) {
+      removeCharacterBody(this.world, this.builder, p);
+      if (!p.qualified && !p.eliminated && this.state !== GAME_STATE.LOBBY) {
+        p.eliminated = true;
+        this.events.push(["x", p.nid]);
+      }
+    }
+    this.players.delete(id);
+    this.participants = this.participants.filter((q) => q !== p);
+    this.nextParticipants = this.nextParticipants.filter((q) => q !== p);
+    console.log(`[room ${this.id}] - ${p.name} (${this.humans.length} humans)`);
+    if (this.humans.length === 0) {
+      this.destroy();
+      this.onEmpty?.(this);
+      return;
+    }
+    this.broadcastRoster();
+  }
+  handleInput(id, msg) {
+    const p = this.players.get(id);
+    if (p && !p.isBot) p.applyInput(msg);
+  }
+  destroy() {
+    this.destroyed = true;
+    this._freeWorld();
+  }
+  // ================================================================ messaging
+  broadcastRoster() {
+    this.io.to(this.id).emit("roster", [...this.players.values()].map((p) => p.rosterEntry()));
+  }
+  stateMessage() {
+    return {
+      state: this.state,
+      time: this.stateTimer,
+      roundIndex: this.roundIndex,
+      totalRounds: this.playlist.rounds.length,
+      levelName: this.level?.name ?? null,
+      mode: this.level?.mode ?? null,
+      description: this.level?.description ?? "",
+      target: this.qualifyTarget,
+      participants: this.participants.length,
+      humans: this.humans.length,
+      maxPlayers: this.opts.maxPlayers
+    };
+  }
+  sendState() {
+    this.io.to(this.id).emit("state", this.stateMessage());
+  }
+  setState(state, duration) {
+    this.state = state;
+    this.stateTimer = duration;
+    this.sendState();
+  }
+  levelPacket() {
+    return {
+      level: this.level,
+      roundIndex: this.roundIndex,
+      totalRounds: this.playlist.rounds.length,
+      target: this.qualifyTarget,
+      participants: this.participants.map((p) => p.nid),
+      sync: this.builder ? this.builder.syncState() : { fallen: [], balls: [] }
+    };
+  }
+  // ================================================================ tournament flow
+  startTournament() {
+    if (this.opts.fillBots) this._fillBots();
+    for (const p of this.players.values()) {
+      p.spectator = false;
+    }
+    this.participants = [...this.players.values()];
+    this.broadcastRoster();
+    console.log(`[room ${this.id}] show starting with ${this.participants.length} beans`);
+    this.startRound(0);
+  }
+  _fillBots() {
+    const names = [...BOT_NAMES].sort(() => this.rng() - 0.5);
+    let i = 0;
+    while (this.players.size < this.opts.maxPlayers) {
+      const id = `bot_${this.nidSeq}`;
+      const bot = new ServerPlayer({
+        id,
+        nid: this.nidSeq++,
+        name: names[i % names.length] + (i >= names.length ? i : ""),
+        color: BEAN_COLORS[Math.floor(this.rng() * BEAN_COLORS.length)],
+        pattern: Math.floor(this.rng() * 4),
+        isBot: true,
+        brain: new BotBrain(mulberry32(this.rng() * 2 ** 31 | 0))
+      });
+      this.players.set(id, bot);
+      i++;
+    }
+  }
+  _freeWorld() {
+    if (this.world) {
+      this.world.free();
+      this.eventQueue.free();
+    }
+    this.world = null;
+    this.eventQueue = null;
+    this.builder = null;
+  }
+  startRound(index) {
+    this._freeWorld();
+    this.roundIndex = index;
+    this.level = this.playlist.pick(index);
+    const R = this.R;
+    this.world = new R.World({ x: 0, y: PHYS.gravity, z: 0 });
+    this.world.timestep = 1 / TICK_RATE;
+    this.eventQueue = new R.EventQueue(true);
+    this.builder = new LevelBuilder(R, this.world, this.level, this.rng() * 2 ** 31 | 0);
+    this.levelTime = 0;
+    this.playTime = 0;
+    this.events = [];
+    this.crownWinner = null;
+    this.elimOrder = [];
+    this.qualifiedCount = 0;
+    for (const p of this.players.values()) p.resetRound();
+    const spawns = this._spawnPoints(this.participants.length);
+    this.participants.forEach((p, i) => {
+      p.participant = true;
+      createCharacterBody(R, this.world, this.builder, p, spawns[i]);
+      p.brain?.reset();
+    });
+    for (const p of this.players.values()) if (!p.participant) p.spectator = true;
+    const n = this.participants.length;
+    if (this.level.mode === MODES.FINAL || n <= 1) this.qualifyTarget = 1;
+    else this.qualifyTarget = Math.max(1, Math.min(n - 1, Math.round(n * this.level.qualifyRatio)));
+    console.log(`[room ${this.id}] round ${index + 1}: ${this.level.name} (${this.level.mode}) ${n} -> ${this.qualifyTarget}`);
+    this.io.to(this.id).emit("level", this.levelPacket());
+    this.setState(GAME_STATE.INTRO, TIMINGS.intro);
+  }
+  _spawnPoints(n) {
+    const { center, spread } = this.level.spawn;
+    const pts = [];
+    const spacing = 1.5;
+    const cols = Math.max(1, Math.floor(spread[0] * 2 / spacing) + 1);
+    for (let i = 0; i < n; i++) {
+      const c = i % cols, r = Math.floor(i / cols);
+      const x = center[0] - spread[0] + c * spacing + r % 2 * 0.5;
+      const z = center[2] - spread[2] + r * spacing;
+      pts.push([Math.min(x, center[0] + spread[0]), center[1], Math.min(z, center[2] + spread[2])]);
+    }
+    return pts.sort(() => this.rng() - 0.5);
+  }
+  endRound() {
+    const mode = this.level.mode;
+    let qualified;
+    if (mode === MODES.RACE) {
+      qualified = this.participants.filter((p) => p.qualified).sort((a, b) => a.finishTime - b.finishTime);
+    } else if (mode === MODES.SURVIVAL) {
+      qualified = this.participants.filter((p) => !p.eliminated);
+      if (qualified.length === 0 && this.elimOrder.length) qualified = [this.elimOrder[this.elimOrder.length - 1]];
+      for (const p of qualified) p.qualified = true;
+    } else {
+      let w = this.crownWinner;
+      if (!w) {
+        const c = this.level.crown.pos;
+        const alive = this.participants.filter((p) => p.body);
+        alive.sort((a, b) => b.checkpoint - a.checkpoint || dist3(a.body.translation(), c) - dist3(b.body.translation(), c));
+        w = alive[0] || null;
+      }
+      qualified = w ? [w] : [];
+    }
+    const qset = new Set(qualified);
+    const eliminated = this.participants.filter((p) => !qset.has(p));
+    for (const p of eliminated) p.eliminated = true;
+    for (const p of this.participants) if (p.body && !p.qualified) p.state = p.eliminated ? PLAYER_STATE.ELIMINATED : p.state;
+    this.nextParticipants = qualified.filter((p) => this.players.has(p.id));
+    this.io.to(this.id).emit("results", {
+      mode,
+      levelName: this.level.name,
+      qualified: qualified.map((p) => p.nid),
+      eliminated: eliminated.map((p) => p.nid),
+      finalRound: mode === MODES.FINAL
+    });
+    this.setState(GAME_STATE.ROUND_END, TIMINGS.roundEnd);
+  }
+  _afterRoundEnd() {
+    const last2 = this.roundIndex >= this.playlist.rounds.length - 1;
+    const survivors = this.nextParticipants;
+    if (this.level.mode === MODES.FINAL || last2 || survivors.length <= 1) {
+      this.declareWinner(survivors[0] || null);
+      return;
+    }
+    this.participants = survivors;
+    let next = this.roundIndex + 1;
+    if (survivors.length <= 2) next = this.playlist.rounds.length - 1;
+    this.startRound(next);
+  }
+  declareWinner(p) {
+    if (p) p.wins++;
+    this.io.to(this.id).emit("winner", p ? { nid: p.nid, name: p.name, color: p.color, isBot: p.isBot } : null);
+    this.broadcastRoster();
+    this.setState(GAME_STATE.WINNER, TIMINGS.winner);
+    console.log(`[room ${this.id}] winner: ${p ? p.name : "nobody"}`);
+  }
+  resetToLobby() {
+    this._freeWorld();
+    for (const [id, p] of this.players) if (p.isBot) this.players.delete(id);
+    for (const p of this.players.values()) {
+      p.resetRound();
+      p.spectator = false;
+    }
+    this.participants = [];
+    this.nextParticipants = [];
+    this.roundIndex = -1;
+    this.level = null;
+    this.broadcastRoster();
+    this.setState(GAME_STATE.LOBBY, this.opts.lobbyWait);
+  }
+  // ================================================================ main tick
+  tick(dt) {
+    if (this.destroyed) return;
+    this.stateTimer -= dt;
+    switch (this.state) {
+      case GAME_STATE.LOBBY:
+        if (this.humans.length === 0) this.stateTimer = this.opts.lobbyWait;
+        else if (this.stateTimer <= 0) this.startTournament();
+        break;
+      case GAME_STATE.INTRO:
+        this.simulate(dt, true);
+        if (this.stateTimer <= 0) this.setState(GAME_STATE.COUNTDOWN, TIMINGS.countdown);
+        break;
+      case GAME_STATE.COUNTDOWN:
+        this.simulate(dt, true);
+        if (this.stateTimer <= 0) this.setState(GAME_STATE.PLAYING, this.level.duration);
+        break;
+      case GAME_STATE.PLAYING:
+        this.simulate(dt, false);
+        this.checkRoundEnd();
+        break;
+      case GAME_STATE.ROUND_END:
+        this.simulate(dt, true);
+        if (this.stateTimer <= 0) this._afterRoundEnd();
+        break;
+      case GAME_STATE.WINNER:
+        if (this.stateTimer <= 0) this.resetToLobby();
+        break;
+    }
+    if (this.world) {
+      this.snapAccum += dt;
+      if (this.snapAccum >= 1 / SNAPSHOT_RATE) {
+        this.snapAccum = 0;
+        this.sendSnapshot();
+      }
+    }
+  }
+  simulate(dt, frozen) {
+    const playing = this.state === GAME_STATE.PLAYING;
+    const active = this.participants.filter((p) => p.body);
+    const ctx = { R: this.R, world: this.world, builder: this.builder, dt, frozen, events: this.events };
+    if (!frozen) {
+      const botCtx = { level: this.level, builder: this.builder, dt, t: this.levelTime };
+      for (const p of active) if (p.isBot) p.brain.update(p, botCtx);
+    }
+    for (const p of active) stepCharacter(p, ctx);
+    if (!frozen) for (const p of active) updateGrab(p, active, dt, this.events);
+    this.builder.update(this.levelTime, this.playTime, dt, active, playing);
+    this.world.step(this.eventQueue);
+    this.eventQueue.drainCollisionEvents((h1, h2, started) => {
+      if (started) this.onCollision(h1, h2);
+    });
+    this.levelTime += dt;
+    if (playing) this.playTime += dt;
+    this.events.push(...this.builder.events.splice(0));
+    for (const p of active) this.checkZones(p, playing);
+  }
+  onCollision(h1, h2) {
+    const info = this.builder.colliderInfo;
+    const a = info.get(h1), b = info.get(h2);
+    if (!a || !b) return;
+    if (a.kind === "player" && b.kind === "player") this.playerBump(a.player, b.player);
+    else if (a.kind === "player") this.hazardHit(a.player, b);
+    else if (b.kind === "player") this.hazardHit(b.player, a);
+  }
+  hazardHit(p, info) {
+    if (!p.body || this.state !== GAME_STATE.PLAYING) return;
+    const pos = p.body.translation();
+    const ev = this.events;
+    switch (info.kind) {
+      case "sweeper": {
+        const c = info.k.pos;
+        const w = info.obj.speed;
+        const rx = pos.x - c[0], rz = pos.z - c[2];
+        const rl = Math.hypot(rx, rz) || 1;
+        const sgn = Math.sign(w) || 1;
+        const tx = sgn * rz / rl, tz = -sgn * rx / rl;
+        const mag = Math.min(16, Math.max(9, Math.abs(w) * rl * 1.5));
+        knockback(p, tx * mag, 6.5, tz * mag, PHYS.stunTime, ev);
+        break;
+      }
+      case "pendulum": {
+        const b0 = pendulumBallPos(info.obj, this.levelTime);
+        const b1 = pendulumBallPos(info.obj, this.levelTime + 0.05);
+        let dx = b1[0] - b0[0], dz = b1[2] - b0[2];
+        let l = Math.hypot(dx, dz);
+        if (l < 0.01) {
+          dx = pos.x - b0[0];
+          dz = pos.z - b0[2];
+          l = Math.hypot(dx, dz) || 1;
+        }
+        knockback(p, dx / l * 15, 7, dz / l * 15, PHYS.stunTime, ev);
+        break;
+      }
+      case "bumper": {
+        const o = info.obj;
+        let dx = pos.x - o.pos[0], dz = pos.z - o.pos[2];
+        const l = Math.hypot(dx, dz) || 1;
+        knockback(p, dx / l * o.force, 5, dz / l * o.force, 0.5, ev);
+        ev.push(["bump", o.id]);
+        break;
+      }
+      case "ball": {
+        const bv = info.ball.body.linvel();
+        const sp = Math.hypot(bv.x, bv.y, bv.z);
+        if (sp < 2) return;
+        const bp = info.ball.body.translation();
+        let dx = bv.x + (pos.x - bp.x) * 2, dz = bv.z + (pos.z - bp.z) * 2;
+        const l = Math.hypot(dx, dz) || 1;
+        const heavy = info.ball.kind === "boulder";
+        knockback(p, dx / l * (heavy ? 11 : 7), heavy ? 5 : 3.5, dz / l * (heavy ? 11 : 7), heavy ? PHYS.stunTime : 0.5, ev);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  playerBump(a, b) {
+    if (!a.body || !b.body || this.state !== GAME_STATE.PLAYING) return;
+    const tryHit = (att, vic) => {
+      if (att.state !== PLAYER_STATE.DIVE) return;
+      const v = att.body.linvel();
+      const sp = Math.hypot(v.x, v.z);
+      if (sp < 6) return;
+      knockback(vic, v.x * 0.8, 4, v.z * 0.8, 0.6, this.events);
+    };
+    tryHit(a, b);
+    tryHit(b, a);
+  }
+  checkZones(p, playing) {
+    if (!p.body) return;
+    const t = p.body.translation();
+    const pos = [t.x, t.y, t.z];
+    const lvl = this.level;
+    if (t.y < lvl.killY || t.y - FOOT2 < this.builder.slimeY) {
+      if (lvl.mode === MODES.SURVIVAL && playing) {
+        this.eliminate(p);
+      } else {
+        const cp = p.checkpoint >= 0 ? lvl.checkpoints[p.checkpoint].respawn : lvl.spawn.center;
+        respawnAt(p, cp, this.rng, this.events);
+        if (p.isBot) p.brain.onRespawn(p, lvl);
+      }
+      return;
+    }
+    if (!playing) return;
+    for (const cp of lvl.checkpoints) {
+      if (cp.index > p.checkpoint && pointInBox(pos, cp.min, cp.max)) {
+        p.checkpoint = cp.index;
+        if (!p.isBot) this.events.push(["cp", p.nid, cp.index]);
+      }
+    }
+    if (lvl.mode === MODES.RACE && this.qualifiedCount < this.qualifyTarget && pointInBox(pos, lvl.finish.min, lvl.finish.max)) {
+      this.qualify(p);
+    } else if (lvl.mode === MODES.FINAL && !this.crownWinner) {
+      const c = lvl.crown.pos;
+      const cy = c[1] + Math.sin(this.levelTime * 2) * lvl.crown.bob;
+      const d = Math.hypot(t.x - c[0], t.y - cy, t.z - c[2]);
+      if (d < PHYS.crownReach && (p.input.grab || d < 1)) {
+        this.crownWinner = p;
+        this.events.push(["crown", p.nid]);
+      }
+    }
+  }
+  qualify(p) {
+    p.qualified = true;
+    this.qualifiedCount++;
+    p.finishTime = this.playTime;
+    p.state = PLAYER_STATE.QUALIFIED;
+    removeCharacterBody(this.world, this.builder, p);
+    this.events.push(["q", p.nid]);
+  }
+  eliminate(p) {
+    p.eliminated = true;
+    p.elimTime = this.playTime;
+    p.state = PLAYER_STATE.ELIMINATED;
+    removeCharacterBody(this.world, this.builder, p);
+    this.elimOrder.push(p);
+    this.events.push(["x", p.nid]);
+  }
+  counts() {
+    let q = 0, alive = 0;
+    for (const p of this.participants) {
+      if (p.qualified) q++;
+      if (!p.eliminated && !p.qualified) alive++;
+    }
+    return { q, alive };
+  }
+  checkRoundEnd() {
+    const mode = this.level.mode;
+    const { q, alive } = this.counts();
+    const n = this.participants.length;
+    const timeUp = this.stateTimer <= 0;
+    if (mode === MODES.RACE) {
+      if (q >= this.qualifyTarget || alive === 0 || timeUp) this.endRound();
+    } else if (mode === MODES.SURVIVAL) {
+      if (alive <= this.qualifyTarget && alive < n || alive === 0 || timeUp) this.endRound();
+    } else if (this.crownWinner || timeUp || alive === 0) {
+      this.endRound();
+    }
+  }
+  sendSnapshot() {
+    const p = [];
+    for (const pl of this.participants) {
+      if (!pl.body) continue;
+      const t = pl.body.translation();
+      const v = pl.body.linvel();
+      p.push([pl.nid, r2(t.x), r2(t.y), r2(t.z), r2(pl.yaw), pl.state, r2(v.x), r2(v.y), r2(v.z), pl.grabTarget ? pl.grabTarget.nid : 0, pl.grounded ? 1 : 0]);
+    }
+    const { q, alive } = this.counts();
+    this.io.to(this.id).emit("snap", {
+      lt: Math.round(this.levelTime * 1e3) / 1e3,
+      tr: Math.max(0, Math.round(this.stateTimer * 10) / 10),
+      st: this.state,
+      sy: Number.isFinite(this.builder.slimeY) ? r2(this.builder.slimeY) : null,
+      p,
+      ss: this.builder.seesawState(),
+      b: this.builder.ballState(),
+      q,
+      a: alive,
+      e: this.events.splice(0)
+    });
+  }
+};
+function dist3(t, c) {
+  return Math.hypot(t.x - c[0], t.y - c[1], t.z - c[2]);
+}
+
+// shared/levelSchema.js
+var OBSTACLE_TYPES = {
+  platform: { required: ["pos", "size"], defaults: { rot: [0, 0, 0], color: "#8ecae6", surface: "normal" } },
+  cylinder: { required: ["pos", "radius", "height"], defaults: { color: "#8ecae6", surface: "normal" } },
+  sweeper: { required: ["pos", "length"], defaults: { thickness: 0.7, height: 0.8, speed: 1.2, phase: 0, arms: 1, pillar: true, rot: [0, 0, 0], color: "#ff4d6d", pillarColor: "#ffd166" } },
+  pendulum: { required: ["pivot", "length"], defaults: { ballRadius: 1.2, amplitude: 60, period: 2.5, phase: 0, axis: [0, 0, 1], color: "#ff7b00", rodColor: "#555555" } },
+  mover: { required: ["from", "to", "size"], defaults: { period: 4, phase: 0, rot: [0, 0, 0], color: "#06d6a0", surface: "normal" } },
+  seesaw: { required: ["pos", "size"], defaults: { axis: "z", maxAngle: 22, sensitivity: 0.09, stiffness: 2.5, color: "#f72585" } },
+  hexfloor: { required: ["center", "rings"], defaults: { tileSize: 1.5, thickness: 0.5, fallDelay: 0.5, colors: ["#4cc9f0", "#4895ef", "#560bad"] } },
+  bumper: { required: ["pos"], defaults: { radius: 1, height: 1.5, force: 14, color: "#ffbe0b" } },
+  conveyor: { required: ["pos", "size", "dir"], defaults: { speed: 3, rot: [0, 0, 0], color: "#3a3a5a" } },
+  spawner: { required: ["pos"], defaults: { spread: [4, 0], interval: 2, radius: [0.8, 1.2], kind: "boulder", impulse: [0, 0, 0], lifetime: 10, color: "#6d4c41", startDelay: 0 } }
+};
+var MODE_DEFAULTS = {
+  [MODES.RACE]: { duration: 150, qualifyRatio: 0.6 },
+  [MODES.SURVIVAL]: { duration: 90, qualifyRatio: 0.5 },
+  [MODES.FINAL]: { duration: 240, qualifyRatio: 0 }
+};
+function fail(levelId, msg) {
+  throw new Error(`[Level "${levelId}"] ${msg}`);
+}
+function isVec(v, n) {
+  return Array.isArray(v) && v.length === n && v.every((x) => typeof x === "number" && Number.isFinite(x));
+}
+function expandHexFloor(obj) {
+  const tiles = [];
+  const s = obj.tileSize;
+  const R = obj.rings;
+  let i = 0;
+  for (let q = -R; q <= R; q++) {
+    for (let r = Math.max(-R, -q - R); r <= Math.min(R, -q + R); r++) {
+      const x = obj.center[0] + s * Math.sqrt(3) * (q + r / 2);
+      const z = obj.center[2] + s * 1.5 * r;
+      const ring = Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r));
+      tiles.push({
+        id: `${obj.id}_${i++}`,
+        pos: [x, obj.center[1], z],
+        color: obj.colors[ring % obj.colors.length]
+      });
+    }
+  }
+  return tiles;
+}
+function normalizeLevel(raw) {
+  if (!raw || typeof raw !== "object") throw new Error("Level must be an object");
+  const id = raw.id || "unnamed";
+  if (!Object.values(MODES).includes(raw.mode)) fail(id, `mode must be one of ${Object.values(MODES).join(", ")}`);
+  const md = MODE_DEFAULTS[raw.mode];
+  const level = {
+    id,
+    name: raw.name || id,
+    description: raw.description || "",
+    mode: raw.mode,
+    duration: raw.duration ?? md.duration,
+    qualifyRatio: raw.qualifyRatio ?? md.qualifyRatio,
+    theme: Object.assign({ sky: "#87cefa", fog: "#bde0fe", fogNear: 60, fogFar: 260, ground: "#9be15d" }, raw.theme || {}),
+    killY: raw.killY ?? -20,
+    slime: Object.assign({ y: -4, riseRate: 0, riseDelay: 0, maxY: 1e3 }, raw.slime || {}),
+    spawn: Object.assign({ center: [0, 2, 0], spread: [8, 0, 4] }, raw.spawn || {}),
+    checkpoints: (raw.checkpoints || []).map((c, i) => {
+      if (!isVec(c.min, 3) || !isVec(c.max, 3) || !isVec(c.respawn, 3)) fail(id, `checkpoint ${i} needs min/max/respawn vec3`);
+      return { index: i, min: c.min, max: c.max, respawn: c.respawn };
+    }),
+    finish: raw.finish || null,
+    crown: raw.crown ? Object.assign({ bob: 0.3 }, raw.crown) : null,
+    botPath: (raw.botPath || []).map((w, i) => {
+      if (!w.p && !w.track) fail(id, `botPath[${i}] needs "p" or "track"`);
+      return Object.assign({ radius: 1.8, offset: [0, 0, 0], within: 1.5 }, w);
+    }),
+    objects: [],
+    tiles: []
+  };
+  if (level.mode === MODES.RACE && !level.finish) fail(id, 'race levels need a "finish" box {min,max}');
+  if (level.mode === MODES.FINAL && !level.crown) fail(id, 'final levels need a "crown" {pos}');
+  if (level.crown && !isVec(level.crown.pos, 3)) fail(id, "crown.pos must be vec3");
+  const ids = /* @__PURE__ */ new Set();
+  (raw.objects || []).forEach((o, i) => {
+    const spec = OBSTACLE_TYPES[o.type];
+    if (!spec) fail(id, `objects[${i}] unknown type "${o.type}". Valid: ${Object.keys(OBSTACLE_TYPES).join(", ")}`);
+    for (const k of spec.required) if (o[k] === void 0) fail(id, `objects[${i}] (${o.type}) missing "${k}"`);
+    const obj = Object.assign({}, JSON.parse(JSON.stringify(spec.defaults)), o);
+    obj.id = o.id || `${o.type}_${i}`;
+    if (ids.has(obj.id)) fail(id, `duplicate object id "${obj.id}"`);
+    ids.add(obj.id);
+    if (obj.type === "hexfloor") level.tiles.push(...expandHexFloor(obj).map((t) => ({ ...t, floor: obj.id, size: obj.tileSize, thickness: obj.thickness, fallDelay: obj.fallDelay })));
+    if (obj.type === "conveyor") {
+      const len = Math.hypot(obj.dir[0], obj.dir[1]) || 1;
+      obj.dir = [obj.dir[0] / len, obj.dir[1] / len];
+    }
+    level.objects.push(obj);
+  });
+  for (const w of level.botPath) {
+    if (w.track && !ids.has(w.track)) fail(id, `botPath track "${w.track}" not found`);
+    if (w.waitFor && !ids.has(w.waitFor)) fail(id, `botPath waitFor "${w.waitFor}" not found`);
+  }
+  return level;
+}
+
+// shared/levelData.js
+var LEVEL_FILES = {
+  "race_bean_dash.json": {
+    "id": "bean_dash",
+    "name": "Bean Dash",
+    "mode": "race",
+    "description": "Dodge the sweepers, ride the platforms, climb the slime hill and reach the finish!",
+    "duration": 150,
+    "qualifyRatio": 0.6,
+    "theme": {
+      "sky": "#8fd3ff",
+      "fog": "#cdeeff",
+      "fogNear": 80,
+      "fogFar": 320
+    },
+    "killY": -20,
+    "slime": {
+      "y": -4
+    },
+    "spawn": {
+      "center": [
+        0,
+        1.5,
+        0
+      ],
+      "spread": [
+        10,
+        0,
+        5
+      ]
+    },
+    "checkpoints": [
+      {
+        "min": [
+          -10,
+          -1,
+          33
+        ],
+        "max": [
+          10,
+          8,
+          37
+        ],
+        "respawn": [
+          0,
+          1.5,
+          35
+        ]
+      },
+      {
+        "min": [
+          -10,
+          -1,
+          59
+        ],
+        "max": [
+          10,
+          8,
+          64
+        ],
+        "respawn": [
+          0,
+          1.5,
+          62
+        ]
+      },
+      {
+        "min": [
+          -10,
+          -1,
+          104
+        ],
+        "max": [
+          10,
+          8,
+          110
+        ],
+        "respawn": [
+          0,
+          1.5,
+          107
+        ]
+      },
+      {
+        "min": [
+          -10,
+          4,
+          134
+        ],
+        "max": [
+          10,
+          12,
+          140
+        ],
+        "respawn": [
+          0,
+          7,
+          137
+        ]
+      }
+    ],
+    "finish": {
+      "min": [
+        -8,
+        5,
+        166
+      ],
+      "max": [
+        8,
+        12,
+        178
+      ]
+    },
+    "objects": [
+      {
+        "id": "start",
+        "type": "platform",
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "size": [
+          24,
+          1,
+          16
+        ],
+        "color": "#ffd6e8"
+      },
+      {
+        "id": "sweepDeck",
+        "type": "platform",
+        "pos": [
+          0,
+          0,
+          22
+        ],
+        "size": [
+          20,
+          1,
+          28
+        ],
+        "color": "#bde0fe"
+      },
+      {
+        "id": "sweepA",
+        "type": "sweeper",
+        "pos": [
+          0,
+          0.5,
+          14
+        ],
+        "length": 12,
+        "speed": 1.4,
+        "arms": 2
+      },
+      {
+        "id": "sweepB",
+        "type": "sweeper",
+        "pos": [
+          0,
+          0.5,
+          28
+        ],
+        "length": 12,
+        "speed": -1.7,
+        "arms": 2,
+        "color": "#7209b7"
+      },
+      {
+        "id": "moverA",
+        "type": "mover",
+        "from": [
+          -6,
+          0,
+          41
+        ],
+        "to": [
+          6,
+          0,
+          41
+        ],
+        "size": [
+          6,
+          0.8,
+          6
+        ],
+        "period": 4
+      },
+      {
+        "id": "moverB",
+        "type": "mover",
+        "from": [
+          6,
+          0,
+          48
+        ],
+        "to": [
+          -6,
+          0,
+          48
+        ],
+        "size": [
+          6,
+          0.8,
+          6
+        ],
+        "period": 4,
+        "color": "#118ab2"
+      },
+      {
+        "id": "moverC",
+        "type": "mover",
+        "from": [
+          -6,
+          0,
+          55
+        ],
+        "to": [
+          6,
+          0,
+          55
+        ],
+        "size": [
+          6,
+          0.8,
+          6
+        ],
+        "period": 3.4
+      },
+      {
+        "id": "pendDeck",
+        "type": "platform",
+        "pos": [
+          0,
+          0,
+          70
+        ],
+        "size": [
+          20,
+          1,
+          22
+        ],
+        "color": "#caffbf"
+      },
+      {
+        "id": "pendA",
+        "type": "pendulum",
+        "pivot": [
+          -5,
+          7,
+          67
+        ],
+        "length": 5.5,
+        "ballRadius": 1.2,
+        "amplitude": 60,
+        "period": 2.4,
+        "phase": 0
+      },
+      {
+        "id": "pendB",
+        "type": "pendulum",
+        "pivot": [
+          0,
+          7,
+          71
+        ],
+        "length": 5.5,
+        "ballRadius": 1.2,
+        "amplitude": 60,
+        "period": 2.4,
+        "phase": 2.1
+      },
+      {
+        "id": "pendC",
+        "type": "pendulum",
+        "pivot": [
+          5,
+          7,
+          67
+        ],
+        "length": 5.5,
+        "ballRadius": 1.2,
+        "amplitude": 60,
+        "period": 2.4,
+        "phase": 4.2
+      },
+      {
+        "id": "bumpL",
+        "type": "bumper",
+        "pos": [
+          -6,
+          0.5,
+          77
+        ]
+      },
+      {
+        "id": "bumpR",
+        "type": "bumper",
+        "pos": [
+          6,
+          0.5,
+          77
+        ]
+      },
+      {
+        "id": "seesawA",
+        "type": "seesaw",
+        "pos": [
+          0,
+          0,
+          87
+        ],
+        "size": [
+          8,
+          0.6,
+          10
+        ],
+        "axis": "z"
+      },
+      {
+        "id": "seesawB",
+        "type": "seesaw",
+        "pos": [
+          0,
+          0,
+          98
+        ],
+        "size": [
+          8,
+          0.6,
+          10
+        ],
+        "axis": "z",
+        "color": "#4361ee"
+      },
+      {
+        "id": "slopeBase",
+        "type": "platform",
+        "pos": [
+          0,
+          0,
+          109
+        ],
+        "size": [
+          16,
+          1,
+          10
+        ],
+        "color": "#ffd6a5"
+      },
+      {
+        "id": "slimeSlope",
+        "type": "platform",
+        "pos": [
+          0,
+          2.5,
+          124
+        ],
+        "size": [
+          12,
+          1,
+          20.6
+        ],
+        "rot": [
+          -14.04,
+          0,
+          0
+        ],
+        "color": "#80ed99",
+        "surface": "slime"
+      },
+      {
+        "id": "boulders",
+        "type": "spawner",
+        "pos": [
+          0,
+          8,
+          133
+        ],
+        "spread": [
+          5,
+          0
+        ],
+        "interval": 1.6,
+        "radius": [
+          0.8,
+          1.3
+        ],
+        "kind": "boulder",
+        "impulse": [
+          0,
+          0,
+          -4
+        ],
+        "lifetime": 12
+      },
+      {
+        "id": "topDeck",
+        "type": "platform",
+        "pos": [
+          0,
+          5,
+          140
+        ],
+        "size": [
+          16,
+          1,
+          12
+        ],
+        "color": "#ffd6e8"
+      },
+      {
+        "id": "belt",
+        "type": "conveyor",
+        "pos": [
+          0,
+          5,
+          154
+        ],
+        "size": [
+          10,
+          1,
+          16
+        ],
+        "dir": [
+          0,
+          -1
+        ],
+        "speed": 3
+      },
+      {
+        "id": "beltBumpL",
+        "type": "bumper",
+        "pos": [
+          -2.5,
+          5.5,
+          152
+        ],
+        "radius": 0.9
+      },
+      {
+        "id": "beltBumpR",
+        "type": "bumper",
+        "pos": [
+          2.5,
+          5.5,
+          157
+        ],
+        "radius": 0.9
+      },
+      {
+        "id": "finishDeck",
+        "type": "platform",
+        "pos": [
+          0,
+          5,
+          170
+        ],
+        "size": [
+          16,
+          1,
+          16
+        ],
+        "color": "#fdffb6"
+      }
+    ],
+    "botPath": [
+      {
+        "p": [
+          0,
+          1,
+          10
+        ]
+      },
+      {
+        "p": [
+          0,
+          1,
+          22
+        ]
+      },
+      {
+        "p": [
+          0,
+          1,
+          36.3
+        ],
+        "waitFor": "moverA",
+        "within": 1.5,
+        "jump": true
+      },
+      {
+        "track": "moverA",
+        "offset": [
+          0,
+          1,
+          1.5
+        ],
+        "radius": 1.6,
+        "waitFor": "moverB",
+        "within": 1.5,
+        "jump": true
+      },
+      {
+        "track": "moverB",
+        "offset": [
+          0,
+          1,
+          1.5
+        ],
+        "radius": 1.6,
+        "waitFor": "moverC",
+        "within": 1.5,
+        "jump": true
+      },
+      {
+        "track": "moverC",
+        "offset": [
+          0,
+          1,
+          1.8
+        ],
+        "radius": 1.6,
+        "jump": true
+      },
+      {
+        "p": [
+          0,
+          1,
+          63
+        ]
+      },
+      {
+        "p": [
+          0,
+          1,
+          70
+        ]
+      },
+      {
+        "p": [
+          0,
+          1,
+          80.3
+        ],
+        "jump": true
+      },
+      {
+        "p": [
+          0,
+          1,
+          87
+        ]
+      },
+      {
+        "p": [
+          0,
+          1,
+          91.8
+        ],
+        "jump": true
+      },
+      {
+        "p": [
+          0,
+          1,
+          98
+        ]
+      },
+      {
+        "p": [
+          0,
+          1,
+          102.8
+        ],
+        "jump": true
+      },
+      {
+        "p": [
+          0,
+          1,
+          110
+        ]
+      },
+      {
+        "p": [
+          0,
+          4,
+          124
+        ]
+      },
+      {
+        "p": [
+          0,
+          7,
+          138
+        ]
+      },
+      {
+        "p": [
+          0,
+          7,
+          150
+        ]
+      },
+      {
+        "p": [
+          0,
+          7,
+          160
+        ]
+      },
+      {
+        "p": [
+          0,
+          7,
+          171
+        ]
+      }
+    ]
+  },
+  "survival_hex_panic.json": {
+    "id": "hex_panic",
+    "name": "Hex Panic",
+    "mode": "survival",
+    "description": "Tiles vanish when you step on them. Stay out of the rising slime until the clock runs out!",
+    "duration": 90,
+    "qualifyRatio": 0.5,
+    "theme": {
+      "sky": "#2b2d42",
+      "fog": "#3d3f5c",
+      "fogNear": 50,
+      "fogFar": 200
+    },
+    "killY": -20,
+    "slime": {
+      "y": -3,
+      "riseRate": 0.08,
+      "riseDelay": 10,
+      "maxY": 3.2
+    },
+    "spawn": {
+      "center": [
+        0,
+        11.5,
+        0
+      ],
+      "spread": [
+        8,
+        0,
+        8
+      ]
+    },
+    "objects": [
+      {
+        "id": "upper",
+        "type": "hexfloor",
+        "center": [
+          0,
+          10,
+          0
+        ],
+        "rings": 5,
+        "tileSize": 1.5,
+        "colors": [
+          "#ff70a6",
+          "#ff9770",
+          "#ffd670"
+        ]
+      },
+      {
+        "id": "lower",
+        "type": "hexfloor",
+        "center": [
+          0,
+          4,
+          0
+        ],
+        "rings": 5,
+        "tileSize": 1.5,
+        "colors": [
+          "#70d6ff",
+          "#4895ef",
+          "#b388ff"
+        ]
+      },
+      {
+        "id": "topSweeper",
+        "type": "sweeper",
+        "pos": [
+          0,
+          10.25,
+          0
+        ],
+        "length": 15,
+        "speed": 0.9,
+        "height": 0.85,
+        "pillar": false
+      },
+      {
+        "id": "fruit",
+        "type": "spawner",
+        "pos": [
+          0,
+          24,
+          0
+        ],
+        "spread": [
+          9,
+          9
+        ],
+        "interval": 0.9,
+        "radius": [
+          0.5,
+          0.8
+        ],
+        "kind": "fruit",
+        "lifetime": 8,
+        "startDelay": 8
+      }
+    ]
+  },
+  "final_crown_summit.json": {
+    "id": "crown_summit",
+    "name": "Crown Summit",
+    "mode": "final",
+    "description": "Fight your way to the summit and GRAB the crown to win the show!",
+    "duration": 240,
+    "theme": {
+      "sky": "#ffc8dd",
+      "fog": "#ffe5ec",
+      "fogNear": 80,
+      "fogFar": 300
+    },
+    "killY": -20,
+    "slime": {
+      "y": -3
+    },
+    "spawn": {
+      "center": [
+        0,
+        1.5,
+        0
+      ],
+      "spread": [
+        9,
+        0,
+        4
+      ]
+    },
+    "checkpoints": [
+      {
+        "min": [
+          -8,
+          4,
+          27
+        ],
+        "max": [
+          8,
+          12,
+          30
+        ],
+        "respawn": [
+          0,
+          7,
+          31
+        ]
+      },
+      {
+        "min": [
+          -7,
+          4,
+          47
+        ],
+        "max": [
+          7,
+          12,
+          50
+        ],
+        "respawn": [
+          0,
+          7,
+          50
+        ]
+      },
+      {
+        "min": [
+          -8,
+          4,
+          67
+        ],
+        "max": [
+          8,
+          12,
+          70
+        ],
+        "respawn": [
+          0,
+          7,
+          69
+        ]
+      },
+      {
+        "min": [
+          -8,
+          10,
+          96
+        ],
+        "max": [
+          8,
+          18,
+          100
+        ],
+        "respawn": [
+          0,
+          13,
+          98
+        ]
+      }
+    ],
+    "crown": {
+      "pos": [
+        0,
+        13.3,
+        104
+      ],
+      "bob": 0.3
+    },
+    "objects": [
+      {
+        "id": "start",
+        "type": "platform",
+        "pos": [
+          0,
+          0,
+          0
+        ],
+        "size": [
+          24,
+          1,
+          14
+        ],
+        "color": "#cdb4db"
+      },
+      {
+        "id": "ramp1",
+        "type": "platform",
+        "pos": [
+          0,
+          2.5,
+          17
+        ],
+        "size": [
+          12,
+          1,
+          20.6
+        ],
+        "rot": [
+          -14.04,
+          0,
+          0
+        ],
+        "color": "#bde0fe"
+      },
+      {
+        "id": "pendA",
+        "type": "pendulum",
+        "pivot": [
+          0,
+          11,
+          13
+        ],
+        "length": 7,
+        "ballRadius": 1.3,
+        "amplitude": 55,
+        "period": 2.6
+      },
+      {
+        "id": "pendB",
+        "type": "pendulum",
+        "pivot": [
+          0,
+          12.5,
+          21
+        ],
+        "length": 7,
+        "ballRadius": 1.3,
+        "amplitude": 55,
+        "period": 2.2,
+        "phase": 1.6
+      },
+      {
+        "id": "deck2",
+        "type": "platform",
+        "pos": [
+          0,
+          5,
+          32
+        ],
+        "size": [
+          16,
+          1,
+          10
+        ],
+        "color": "#ffafcc"
+      },
+      {
+        "id": "bumpA",
+        "type": "bumper",
+        "pos": [
+          -4,
+          5.5,
+          32
+        ],
+        "radius": 1.1
+      },
+      {
+        "id": "bumpB",
+        "type": "bumper",
+        "pos": [
+          4,
+          5.5,
+          32
+        ],
+        "radius": 1.1
+      },
+      {
+        "id": "seesaw",
+        "type": "seesaw",
+        "pos": [
+          0,
+          5,
+          42
+        ],
+        "size": [
+          6,
+          0.6,
+          9
+        ],
+        "axis": "z",
+        "maxAngle": 25
+      },
+      {
+        "id": "deck3",
+        "type": "platform",
+        "pos": [
+          0,
+          5,
+          51
+        ],
+        "size": [
+          14,
+          1,
+          8
+        ],
+        "color": "#a2d2ff"
+      },
+      {
+        "id": "belt",
+        "type": "conveyor",
+        "pos": [
+          0,
+          5,
+          61
+        ],
+        "size": [
+          8,
+          1,
+          12
+        ],
+        "dir": [
+          0,
+          -1
+        ],
+        "speed": 3.5
+      },
+      {
+        "id": "deck4",
+        "type": "platform",
+        "pos": [
+          0,
+          5,
+          72
+        ],
+        "size": [
+          16,
+          1,
+          10
+        ],
+        "color": "#ffafcc"
+      },
+      {
+        "id": "sweep4",
+        "type": "sweeper",
+        "pos": [
+          0,
+          5.5,
+          72
+        ],
+        "length": 14,
+        "speed": -1.6,
+        "arms": 2
+      },
+      {
+        "id": "ramp2",
+        "type": "platform",
+        "pos": [
+          0,
+          8,
+          86.5
+        ],
+        "size": [
+          10,
+          1,
+          19.9
+        ],
+        "rot": [
+          -17.5,
+          0,
+          0
+        ],
+        "color": "#bde0fe"
+      },
+      {
+        "id": "rocks",
+        "type": "spawner",
+        "pos": [
+          0,
+          15,
+          97
+        ],
+        "spread": [
+          4,
+          0
+        ],
+        "interval": 2.2,
+        "radius": [
+          0.7,
+          1.1
+        ],
+        "kind": "boulder",
+        "impulse": [
+          0,
+          0,
+          -3
+        ],
+        "lifetime": 10
+      },
+      {
+        "id": "summit",
+        "type": "cylinder",
+        "pos": [
+          0,
+          11,
+          104
+        ],
+        "radius": 8,
+        "height": 1,
+        "color": "#fff1a8"
+      },
+      {
+        "id": "summitSweep",
+        "type": "sweeper",
+        "pos": [
+          0,
+          11.5,
+          104
+        ],
+        "length": 14,
+        "speed": 1.2,
+        "pillar": false,
+        "color": "#ef233c"
+      }
+    ],
+    "botPath": [
+      {
+        "p": [
+          0,
+          1,
+          5
+        ]
+      },
+      {
+        "p": [
+          0,
+          3,
+          17
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          29
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          36.6
+        ],
+        "jump": true
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          42
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          46.8
+        ],
+        "jump": true
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          51
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          60
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          67
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          72
+        ]
+      },
+      {
+        "p": [
+          0,
+          6.5,
+          77
+        ]
+      },
+      {
+        "p": [
+          0,
+          9.5,
+          86
+        ]
+      },
+      {
+        "p": [
+          0,
+          12.5,
+          98
+        ]
+      },
+      {
+        "p": [
+          0,
+          12.5,
+          104
+        ],
+        "radius": 1,
+        "grab": true
+      }
+    ]
+  }
+};
+
+// js/LocalNetwork.js
+var RAPIER_URLS = [
+  "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js",
+  "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/+esm",
+  "https://unpkg.com/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+];
+var PLAYLIST = {
+  rounds: [
+    { pool: ["race_bean_dash.json"] },
+    { pool: ["survival_hex_panic.json"] },
+    { pool: ["final_crown_summit.json"] }
+  ]
+};
+async function loadRapier() {
+  let lastErr;
+  for (const url of RAPIER_URLS) {
+    try {
+      const mod = await import(url);
+      const R = mod.default ?? mod;
+      await R.init();
+      return R;
+    } catch (err) {
+      lastErr = err;
+      console.warn("Rapier load failed from", url, err);
+    }
+  }
+  throw lastErr;
+}
+var Network = class {
+  constructor() {
+    this.rtt = 0;
+    this.handlers = {};
+    this.seq = 0;
+    this.room = null;
+  }
+  on(ev, fn) {
+    this.handlers[ev] = fn;
+  }
+  _emit(ev, data) {
+    try {
+      this.handlers[ev]?.(data);
+    } catch (err) {
+      console.error(`handler ${ev} failed`, err);
+    }
+  }
+  async join(profile2) {
+    let R;
+    try {
+      R = await loadRapier();
+    } catch (err) {
+      this._emit("connect_error", err);
+      return;
+    }
+    const playlist = {
+      rounds: PLAYLIST.rounds,
+      pick: (i) => {
+        const pool = PLAYLIST.rounds[i].pool;
+        const file = pool[Math.floor(Math.random() * pool.length)];
+        return normalizeLevel(JSON.parse(JSON.stringify(LEVEL_FILES[file])));
+      }
+    };
+    const io = { to: () => ({ emit: (ev, data) => this._emit(ev, data) }) };
+    const socket = { id: "local", join() {
+    }, emit: (ev, data) => this._emit(ev, data) };
+    this.room = new GameRoom({ id: "local-show", io, RAPIER: R, playlist, options: { lobbyWait: 4, fillBots: true, maxPlayers: 20 } });
+    this._emit("connect");
+    this.room.addHuman(socket, profile2);
+    this._startLoop();
+  }
+  _startLoop() {
+    const dt = 1 / TICK_RATE;
+    let last2 = performance.now();
+    let acc = 0;
+    setInterval(() => {
+      const now = performance.now();
+      acc += (now - last2) / 1e3;
+      last2 = now;
+      if (acc > 0.25) acc = 0.25;
+      while (acc >= dt) {
+        try {
+          this.room.tick(dt);
+        } catch (err) {
+          console.error("tick error", err);
+        }
+        acc -= dt;
+      }
+    }, 4);
+  }
+  sendInput(inp) {
+    this.room?.handleInput("local", { seq: ++this.seq, ...inp });
+  }
+};
+
+// js/LevelBuilder.js
+import * as THREE from "three";
+var texCache = /* @__PURE__ */ new Map();
+function canvasTex(key, draw, size = 128) {
+  if (texCache.has(key)) return texCache.get(key);
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  draw(c.getContext("2d"), size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  texCache.set(key, t);
+  return t;
+}
+function tileTex(color) {
+  return canvasTex(`tile${color}`, (g, s) => {
+    const base = new THREE.Color(color);
+    g.fillStyle = base.getStyle();
+    g.fillRect(0, 0, s, s);
+    g.fillStyle = base.clone().lerp(new THREE.Color("#fff"), 0.18).getStyle();
+    g.fillRect(0, 0, s / 2, s / 2);
+    g.fillRect(s / 2, s / 2, s / 2, s / 2);
+    g.strokeStyle = "rgba(0,0,0,0.08)";
+    g.lineWidth = 4;
+    g.strokeRect(0, 0, s, s);
+  });
+}
+var stripeTex = (a, b) => canvasTex(`stripe${a}${b}`, (g, s) => {
+  g.fillStyle = a;
+  g.fillRect(0, 0, s, s);
+  g.fillStyle = b;
+  for (let i = -s; i < s * 2; i += 32) {
+    g.beginPath();
+    g.moveTo(i, 0);
+    g.lineTo(i + 16, 0);
+    g.lineTo(i + 16 - s, s);
+    g.lineTo(i - s, s);
+    g.fill();
+  }
+});
+var arrowTex = () => canvasTex("arrows", (g, s) => {
+  g.fillStyle = "#2b2d42";
+  g.fillRect(0, 0, s, s);
+  g.fillStyle = "#ffd60a";
+  g.beginPath();
+  g.moveTo(s / 2, 12);
+  g.lineTo(s - 22, s / 2);
+  g.lineTo(s / 2 + 14, s / 2);
+  g.lineTo(s / 2 + 14, s - 12);
+  g.lineTo(s / 2 - 14, s - 12);
+  g.lineTo(s / 2 - 14, s / 2);
+  g.lineTo(22, s / 2);
+  g.closePath();
+  g.fill();
+});
+var slimeTex = () => canvasTex("slime", (g, s) => {
+  g.fillStyle = "#5ee35e";
+  g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 70; i++) {
+    g.fillStyle = `rgba(${200 + Math.random() * 55},255,${150 + Math.random() * 100},${0.15 + Math.random() * 0.3})`;
+    g.beginPath();
+    g.arc(Math.random() * s, Math.random() * s, 3 + Math.random() * 14, 0, Math.PI * 2);
+    g.fill();
+  }
+}, 256);
+var checkerTex = () => canvasTex("checker", (g, s) => {
+  const n = 8;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    g.fillStyle = (x + y) % 2 ? "#111" : "#fff";
+    g.fillRect(x * s / n, y * s / n, s / n, s / n);
+  }
+});
+function std(color, extra = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, ...extra });
+}
+function shadowy(mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+var LevelBuilder2 = class {
+  constructor(scene2, level) {
+    this.scene = scene2;
+    this.level = level;
+    this.group = new THREE.Group();
+    this.group.name = `level:${level.id}`;
+    scene2.add(this.group);
+    this.kinematic = [];
+    this.seesaws = /* @__PURE__ */ new Map();
+    this.tiles = /* @__PURE__ */ new Map();
+    this.balls = /* @__PURE__ */ new Map();
+    this.bumpers = /* @__PURE__ */ new Map();
+    this.conveyors = [];
+    this.solids = [];
+    this.ray = new THREE.Raycaster();
+    this.ray.far = 30;
+    this.down = new THREE.Vector3(0, -1, 0);
+    this.time = 0;
+    for (const obj of level.objects) this.build(obj);
+    this.buildSlime();
+    if (level.finish) this.buildFinish(level.finish);
+    if (level.crown) this.buildCrown(level.crown);
+    for (const cp of level.checkpoints) this.buildCheckpoint(cp);
+    this.buildDecor();
+  }
+  // -------------------------------------------------------------- prefabs
+  addSolid(mesh) {
+    this.solids.push(mesh);
+    return mesh;
+  }
+  boxMesh(size, color, surface) {
+    const geo = new THREE.BoxGeometry(size[0], size[1], size[2]);
+    let mat;
+    if (surface === "slime") {
+      const t = slimeTex().clone();
+      t.needsUpdate = true;
+      t.repeat.set(size[0] / 4, size[2] / 4);
+      mat = std(color, { map: t, roughness: 0.1, metalness: 0.1, emissive: new THREE.Color(color).multiplyScalar(0.25) });
+      this.conveyors.push({ tex: t, obj: { speed: 0.4, dir: [0, 1] }, slime: true });
+    } else {
+      const t = tileTex(color).clone();
+      t.needsUpdate = true;
+      t.repeat.set(Math.max(1, size[0] / 2), Math.max(1, size[2] / 2));
+      mat = std("#ffffff", { map: t });
+    }
+    return shadowy(new THREE.Mesh(geo, mat));
+  }
+  build(obj) {
+    const g = this.group;
+    switch (obj.type) {
+      case "platform": {
+        const m = this.boxMesh(obj.size, obj.color, obj.surface);
+        m.position.fromArray(obj.pos);
+        m.quaternion.fromArray(quatFromEulerDeg(obj.rot));
+        g.add(this.addSolid(m));
+        break;
+      }
+      case "cylinder": {
+        const t = tileTex(obj.color).clone();
+        t.needsUpdate = true;
+        t.repeat.set(obj.radius, 1);
+        const m = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(obj.radius, obj.radius, obj.height, 48), std("#fff", { map: t })));
+        m.position.fromArray(obj.pos);
+        g.add(this.addSolid(m));
+        break;
+      }
+      case "sweeper": {
+        if (obj.pillar) {
+          const h = obj.height + 0.4;
+          const p = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, h, 24), std(obj.pillarColor)));
+          p.position.set(obj.pos[0], obj.pos[1] + h / 2, obj.pos[2]);
+          g.add(this.addSolid(p));
+        }
+        const node = new THREE.Group();
+        const mat = std("#fff", { map: stripeTex(obj.color, "#ffffff") });
+        for (let a = 0; a < obj.arms; a++) {
+          const arm = shadowy(new THREE.Mesh(new THREE.BoxGeometry(obj.length, obj.thickness, obj.thickness), mat));
+          arm.rotation.y = a * Math.PI / obj.arms;
+          node.add(arm);
+          for (const s of [-1, 1]) {
+            const cap = shadowy(new THREE.Mesh(new THREE.SphereGeometry(obj.thickness * 0.65, 16, 12), std(obj.color)));
+            cap.position.set(s * obj.length / 2, 0, 0);
+            arm.add(cap);
+          }
+        }
+        const hub = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, obj.thickness + 0.2, 20), std(obj.pillarColor)));
+        node.add(hub);
+        g.add(node);
+        this.kinematic.push({ obj, node });
+        break;
+      }
+      case "pendulum": {
+        const node = new THREE.Group();
+        const rod = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, obj.length, 8), std(obj.rodColor, { metalness: 0.6 })));
+        rod.position.y = -obj.length / 2;
+        node.add(rod);
+        const ball = shadowy(new THREE.Mesh(new THREE.SphereGeometry(obj.ballRadius, 28, 20), std(obj.color, { map: stripeTex(obj.color, "#ffe066") })));
+        ball.position.y = -obj.length;
+        node.add(ball);
+        g.add(node);
+        const beam = shadowy(new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), std("#6c757d", { metalness: 0.5 })));
+        beam.position.fromArray(obj.pivot);
+        g.add(beam);
+        this.kinematic.push({ obj, node });
+        break;
+      }
+      case "mover": {
+        const node = this.boxMesh(obj.size, obj.color, obj.surface);
+        g.add(this.addSolid(node));
+        this.kinematic.push({ obj, node });
+        break;
+      }
+      case "seesaw": {
+        const node = new THREE.Group();
+        node.position.fromArray(obj.pos);
+        const plank = this.boxMesh(obj.size, obj.color);
+        node.add(this.addSolid(plank));
+        g.add(node);
+        const len = obj.axis === "z" ? obj.size[2] : obj.size[0];
+        const baseGroup = new THREE.Group();
+        const base = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, len * 0.9, 3), std("#adb5bd")));
+        base.rotation.x = -Math.PI / 2;
+        baseGroup.add(base);
+        if (obj.axis === "x") baseGroup.rotation.y = Math.PI / 2;
+        baseGroup.position.set(obj.pos[0], obj.pos[1] - obj.size[1] / 2 - 0.9, obj.pos[2]);
+        g.add(baseGroup);
+        this.seesaws.set(obj.id, { node, axis: obj.axis, angle: 0, target: 0 });
+        break;
+      }
+      case "hexfloor": {
+        const geo = new THREE.CylinderGeometry(obj.tileSize * 0.95, obj.tileSize * 0.95, obj.thickness, 6);
+        for (const t of this.level.tiles) {
+          if (t.floor !== obj.id) continue;
+          const mat = std(t.color, { roughness: 0.35, emissive: new THREE.Color(0, 0, 0) });
+          const mesh = shadowy(new THREE.Mesh(geo, mat));
+          mesh.position.fromArray(t.pos);
+          g.add(this.addSolid(mesh));
+          this.tiles.set(t.id, { mesh, state: "idle", t: 0, base: t.pos.slice(), baseColor: new THREE.Color(t.color) });
+        }
+        break;
+      }
+      case "bumper": {
+        const node = new THREE.Group();
+        node.position.set(obj.pos[0], obj.pos[1], obj.pos[2]);
+        const body = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(obj.radius, obj.radius * 1.1, obj.height, 32), std(obj.color, { emissive: new THREE.Color(obj.color).multiplyScalar(0.25) })));
+        body.position.y = obj.height / 2;
+        node.add(body);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(obj.radius * 1.02, 0.12, 10, 32), std("#ff006e", { emissive: new THREE.Color("#ff006e").multiplyScalar(0.5) }));
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = obj.height * 0.6;
+        node.add(ring);
+        g.add(node);
+        this.bumpers.set(obj.id, { node, pulse: 0 });
+        break;
+      }
+      case "conveyor": {
+        const tex = arrowTex().clone();
+        tex.needsUpdate = true;
+        tex.repeat.set(Math.max(1, Math.round(obj.size[0] / 2.5)), obj.size[2] / 2.5);
+        tex.center.set(0.5, 0.5);
+        tex.rotation = Math.atan2(-obj.dir[0], -obj.dir[1]);
+        const side = std(obj.color);
+        const top = std("#fff", { map: tex });
+        const mats = [side, side, top, side, side, side];
+        const m = shadowy(new THREE.Mesh(new THREE.BoxGeometry(obj.size[0], obj.size[1], obj.size[2]), mats));
+        m.position.fromArray(obj.pos);
+        m.quaternion.fromArray(quatFromEulerDeg(obj.rot));
+        g.add(this.addSolid(m));
+        this.conveyors.push({ tex, obj, repeatLen: 2.5 });
+        for (const s of [-1, 1]) {
+          const rail = shadowy(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.35, obj.size[2]), std("#ffd60a")));
+          rail.position.set(obj.pos[0] + s * (obj.size[0] / 2 - 0.12), obj.pos[1] + obj.size[1] / 2 + 0.17, obj.pos[2]);
+          g.add(rail);
+        }
+        break;
+      }
+      case "spawner": {
+        const node = new THREE.Group();
+        node.position.fromArray(obj.pos);
+        if (obj.kind === "fruit") {
+          for (let i = 0; i < 7; i++) {
+            const puff = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random() * 1.5, 16, 12), std("#ffffff", { roughness: 1 }));
+            puff.position.set((Math.random() - 0.5) * obj.spread[0] * 1.6, 2 + Math.random(), (Math.random() - 0.5) * obj.spread[1] * 1.6);
+            node.add(puff);
+          }
+        } else {
+          const chute = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(obj.spread[0] + 1.5, obj.spread[0] + 2, 1.6, 32, 1, true), std("#495057", { side: THREE.DoubleSide, metalness: 0.4 })));
+          chute.position.y = 1.2;
+          node.add(chute);
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(obj.spread[0] + 1.7, 0.25, 8, 32), std("#ffd60a"));
+          rim.rotation.x = Math.PI / 2;
+          rim.position.y = 2;
+          node.add(rim);
+        }
+        g.add(node);
+        break;
+      }
+      default:
+        console.warn("Unknown object type", obj.type);
+    }
+  }
+  buildSlime() {
+    const sl = this.level.slime;
+    if (!sl) return;
+    const t = slimeTex().clone();
+    t.needsUpdate = true;
+    t.repeat.set(60, 60);
+    const mat = new THREE.MeshStandardMaterial({ color: "#7bf27b", map: t, roughness: 0.15, metalness: 0.1, emissive: "#1f7a1f", emissiveIntensity: 0.6, transparent: true, opacity: 0.92 });
+    this.slime = new THREE.Mesh(new THREE.PlaneGeometry(800, 800, 1, 1), mat);
+    this.slime.rotation.x = -Math.PI / 2;
+    this.slime.position.y = sl.y;
+    this.slime.receiveShadow = true;
+    this.slimeTarget = sl.y;
+    this.slimeTex = t;
+    this.group.add(this.slime);
+  }
+  buildFinish(f) {
+    const w = f.max[0] - f.min[0];
+    const z = f.min[2];
+    const y = f.min[1] + 0.5;
+    const postMat = std("#ff006e");
+    for (const x of [f.min[0], f.max[0]]) {
+      const post = shadowy(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 6, 16), postMat));
+      post.position.set(x, y + 3, z);
+      this.group.add(post);
+    }
+    const tex = checkerTex().clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(w / 1.5, 1);
+    const banner = shadowy(new THREE.Mesh(new THREE.BoxGeometry(w + 0.8, 1.2, 0.4), std("#fff", { map: tex })));
+    banner.position.set((f.min[0] + f.max[0]) / 2, y + 6, z);
+    this.group.add(banner);
+    const line = new THREE.Mesh(new THREE.PlaneGeometry(w, 1), std("#fff", { map: tex }));
+    line.rotation.x = -Math.PI / 2;
+    line.position.set((f.min[0] + f.max[0]) / 2, y + 0.02, z + 0.5);
+    this.group.add(line);
+  }
+  buildCrown(c) {
+    const node = new THREE.Group();
+    const gold = std("#ffd60a", { metalness: 0.85, roughness: 0.2, emissive: new THREE.Color("#7a5c00") });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.45, 24, 1, true), gold);
+    band.material.side = THREE.DoubleSide;
+    node.add(band);
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * Math.PI * 2;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 8), gold);
+      spike.position.set(Math.cos(a) * 0.55, 0.42, Math.sin(a) * 0.55);
+      node.add(spike);
+      const gem = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), std(["#ff006e", "#4cc9f0", "#7bd389"][i % 3], { emissive: "#330011" }));
+      gem.position.set(Math.cos(a) * 0.6, 0, Math.sin(a) * 0.6);
+      node.add(gem);
+    }
+    const glow = new THREE.PointLight("#ffd60a", 6, 10, 2);
+    node.add(glow);
+    node.scale.setScalar(1.3);
+    node.position.fromArray(c.pos);
+    this.group.add(node);
+    this.crown = { node, base: c.pos.slice(), bob: c.bob };
+  }
+  buildCheckpoint(cp) {
+    for (const x of [cp.min[0], cp.max[0]]) {
+      const flag = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3, 8), std("#ffffff"));
+      pole.position.y = 1.5;
+      flag.add(pole);
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.6), std("#7bd389", { side: THREE.DoubleSide }));
+      cloth.position.set(0.45 * Math.sign(-x || 1), 2.65, 0);
+      flag.add(cloth);
+      const groundY = cp.respawn[1] - 1;
+      flag.position.set(x, groundY, (cp.min[2] + cp.max[2]) / 2);
+      this.group.add(flag);
+    }
+  }
+  buildDecor() {
+    const colors = ["#ff5fa2", "#ffd60a", "#4cc9f0", "#b388ff", "#7bd389"];
+    const geos = [new THREE.TorusGeometry(4, 1.3, 16, 40), new THREE.IcosahedronGeometry(4, 0), new THREE.TorusKnotGeometry(3, 0.9, 64, 10), new THREE.OctahedronGeometry(4)];
+    let seed = 7;
+    const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+    const cz = this.level.spawn.center[2] + 60;
+    this.decor = [];
+    for (let i = 0; i < 18; i++) {
+      const m = new THREE.Mesh(geos[i % geos.length], std(colors[i % colors.length], { roughness: 0.4 }));
+      const a = rnd() * Math.PI * 2;
+      const r = 90 + rnd() * 80;
+      m.position.set(Math.cos(a) * r, 5 + rnd() * 40, cz + Math.sin(a) * r);
+      m.userData.spin = (rnd() - 0.5) * 0.6;
+      this.group.add(m);
+      this.decor.push(m);
+    }
+  }
+  // -------------------------------------------------------------- runtime
+  applySnapshot(snap) {
+    if (snap.sy !== null && snap.sy !== void 0) this.slimeTarget = snap.sy;
+    for (const [id, ang] of snap.ss || []) {
+      const s = this.seesaws.get(id);
+      if (s) s.target = ang;
+    }
+    const seen = /* @__PURE__ */ new Set();
+    for (const b of snap.b || []) {
+      const [id, x, y, z, qx, qy, qz, qw] = b;
+      seen.add(id);
+      let ball = this.balls.get(id);
+      if (!ball) ball = this.spawnBall(id, 1, "boulder", "#6d4c41");
+      ball.target.set(x, y, z);
+      ball.quat.set(qx, qy, qz, qw);
+      if (!ball.placed) {
+        ball.mesh.position.copy(ball.target);
+        ball.placed = true;
+      }
+    }
+    for (const [id, ball] of this.balls) if (!seen.has(id) && ball.placed) this.removeBall(id);
+  }
+  spawnBall(id, r, kind, color) {
+    const existing = this.balls.get(id);
+    if (existing) return existing;
+    let mesh;
+    if (kind === "fruit") {
+      const fruitColors = ["#ff595e", "#ffca3a", "#8ac926", "#ff924c", "#c77dff"];
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), std(fruitColors[id % fruitColors.length], { roughness: 0.3 }));
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(r * 0.25, r * 0.5, 6), std("#2d6a4f"));
+      leaf.position.y = r;
+      mesh.add(leaf);
+    } else {
+      mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), std(color, { roughness: 0.95, flatShading: true }));
+    }
+    mesh.castShadow = true;
+    this.group.add(mesh);
+    const ball = { mesh, target: new THREE.Vector3(), quat: new THREE.Quaternion(), placed: false };
+    this.balls.set(id, ball);
+    return ball;
+  }
+  removeBall(id) {
+    const b = this.balls.get(id);
+    if (!b) return;
+    this.group.remove(b.mesh);
+    b.mesh.geometry.dispose();
+    this.balls.delete(id);
+  }
+  /** Returns true if the event was a level event. */
+  handleEvent(e) {
+    switch (e[0]) {
+      case "tw": {
+        const t = this.tiles.get(e[1]);
+        if (t && t.state === "idle") {
+          t.state = "warn";
+          t.t = 0;
+        }
+        return true;
+      }
+      case "tf": {
+        const t = this.tiles.get(e[1]);
+        if (t) {
+          t.state = "fall";
+          t.t = 0;
+        }
+        return true;
+      }
+      case "b":
+        this.spawnBall(e[1], e[2], e[3], e[4]);
+        return true;
+      case "bx":
+        this.removeBall(e[1]);
+        return true;
+      case "bump": {
+        const b = this.bumpers.get(e[1]);
+        if (b) b.pulse = 1;
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+  applySync(sync) {
+    for (const id of sync.fallen || []) {
+      const t = this.tiles.get(id);
+      if (t) {
+        t.state = "gone";
+        t.mesh.visible = false;
+      }
+    }
+    for (const [id, r, kind, color] of sync.balls || []) this.spawnBall(id, r, kind, color);
+  }
+  crownPosition(lt) {
+    if (!this.crown) return null;
+    const c = this.crown;
+    return new THREE.Vector3(c.base[0], c.base[1] + Math.sin(lt * 2) * c.bob, c.base[2]);
+  }
+  groundHeight(pos) {
+    this.ray.set(new THREE.Vector3(pos.x, pos.y - 0.5, pos.z), this.down);
+    const hits = this.ray.intersectObjects(this.solids, false);
+    for (const h of hits) if (h.object.visible) return h.point.y;
+    return this.slime ? this.slime.position.y : null;
+  }
+  update(lt, dt) {
+    this.time += dt;
+    for (const k of this.kinematic) {
+      const pose = kinematicPose(k.obj, lt);
+      k.node.position.fromArray(pose.pos);
+      k.node.quaternion.fromArray(pose.quat);
+    }
+    for (const s of this.seesaws.values()) {
+      s.angle += (s.target - s.angle) * Math.min(1, dt * 12);
+      if (s.axis === "z") s.node.rotation.set(0, 0, s.angle);
+      else s.node.rotation.set(s.angle, 0, 0);
+    }
+    for (const t of this.tiles.values()) {
+      if (t.state === "warn") {
+        t.t += dt;
+        const flash = 0.5 + 0.5 * Math.sin(t.t * 40);
+        t.mesh.material.color.copy(t.baseColor).lerp(new THREE.Color("#ffffff"), 0.4 + flash * 0.4);
+        t.mesh.position.y = t.base[1] - t.t * 0.15;
+        t.mesh.position.x = t.base[0] + (Math.random() - 0.5) * 0.05;
+      } else if (t.state === "fall") {
+        t.t += dt;
+        t.mesh.position.y = t.base[1] - 0.5 * 25 * t.t * t.t;
+        t.mesh.rotation.x += dt * 2;
+        t.mesh.material.transparent = true;
+        t.mesh.material.opacity = Math.max(0, 1 - t.t * 1.5);
+        if (t.t > 0.7) {
+          t.state = "gone";
+          t.mesh.visible = false;
+        }
+      }
+    }
+    for (const b of this.balls.values()) {
+      b.mesh.position.lerp(b.target, 1 - Math.exp(-18 * dt));
+      b.mesh.quaternion.slerp(b.quat, 1 - Math.exp(-18 * dt));
+    }
+    for (const b of this.bumpers.values()) {
+      if (b.pulse > 0) {
+        b.pulse = Math.max(0, b.pulse - dt * 4);
+        const s = 1 + Math.sin(b.pulse * Math.PI) * 0.25;
+        b.node.scale.set(s, 1, s);
+      }
+    }
+    for (const c of this.conveyors) {
+      if (c.slime) {
+        c.tex.offset.y += dt * 0.05;
+        continue;
+      }
+      c.tex.offset.y -= c.obj.speed * dt / c.repeatLen;
+    }
+    if (this.slime) {
+      this.slime.position.y += (this.slimeTarget - this.slime.position.y) * Math.min(1, dt * 5);
+      this.slimeTex.offset.x += dt * 0.01;
+      this.slimeTex.offset.y += dt * 6e-3;
+    }
+    if (this.crown) {
+      const p = this.crownPosition(lt);
+      this.crown.node.position.copy(p);
+      this.crown.node.rotation.y += dt * 1.5;
+    }
+    if (this.decor) for (const d of this.decor) {
+      d.rotation.y += d.userData.spin * dt;
+      d.rotation.x += d.userData.spin * 0.5 * dt;
+    }
+  }
+  dispose() {
+    const cachedTextures = new Set(texCache.values());
+    this.scene.remove(this.group);
+    this.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          if (m.map && !cachedTextures.has(m.map)) m.map.dispose();
+          m.dispose();
+        }
+      }
+    });
+  }
+};
+
+// js/Bean.js
+import * as THREE2 from "three";
+var textureCache = /* @__PURE__ */ new Map();
+function bodyTexture(color, pattern) {
+  const key = `${color}|${pattern}`;
+  if (textureCache.has(key)) return textureCache.get(key);
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  const base = new THREE2.Color(color);
+  const light = base.clone().lerp(new THREE2.Color("#ffffff"), 0.45).getStyle();
+  const dark = base.clone().lerp(new THREE2.Color("#000000"), 0.25).getStyle();
+  g.fillStyle = base.getStyle();
+  g.fillRect(0, 0, 256, 256);
+  if (pattern === 1) {
+    g.fillStyle = light;
+    for (let y = 0; y < 256; y += 48) g.fillRect(0, y, 256, 22);
+  } else if (pattern === 2) {
+    g.fillStyle = light;
+    for (let y = 16; y < 256; y += 42) for (let x = y / 42 % 2 ? 36 : 14; x < 256; x += 44) {
+      g.beginPath();
+      g.arc(x, y, 9, 0, Math.PI * 2);
+      g.fill();
+    }
+  } else if (pattern === 3) {
+    g.fillStyle = dark;
+    g.fillRect(0, 150, 256, 106);
+  }
+  const tex = new THREE2.CanvasTexture(c);
+  tex.colorSpace = THREE2.SRGBColorSpace;
+  textureCache.set(key, tex);
+  return tex;
+}
+function nameSprite(name, color) {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext("2d");
+  g.font = "bold 30px Nunito, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const w = Math.min(250, g.measureText(name).width + 28);
+  g.fillStyle = "rgba(0,0,0,0.45)";
+  g.beginPath();
+  g.roundRect((256 - w) / 2, 10, w, 44, 22);
+  g.fill();
+  g.fillStyle = color;
+  g.fillRect((256 - w) / 2 + 14, 48, w - 28, 3);
+  g.fillStyle = "#fff";
+  g.fillText(name, 128, 32);
+  const tex = new THREE2.CanvasTexture(c);
+  tex.colorSpace = THREE2.SRGBColorSpace;
+  const sp = new THREE2.Sprite(new THREE2.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+  sp.scale.set(2.2, 0.55, 1);
+  sp.position.y = 1.45;
+  sp.renderOrder = 10;
+  return sp;
+}
+var SHARED = {};
+function shared() {
+  if (SHARED.body) return SHARED;
+  SHARED.body = new THREE2.CapsuleGeometry(0.45, 0.8, 8, 20);
+  SHARED.limb = new THREE2.CapsuleGeometry(0.12, 0.28, 4, 8);
+  SHARED.visor = new THREE2.SphereGeometry(0.3, 24, 16);
+  SHARED.eye = new THREE2.SphereGeometry(0.065, 12, 8);
+  SHARED.pupil = new THREE2.SphereGeometry(0.035, 8, 6);
+  SHARED.shadow = new THREE2.CircleGeometry(0.5, 20);
+  SHARED.visorMat = new THREE2.MeshStandardMaterial({ color: "#1d1d2c", roughness: 0.15, metalness: 0.3 });
+  SHARED.eyeMat = new THREE2.MeshBasicMaterial({ color: "#ffffff" });
+  SHARED.pupilMat = new THREE2.MeshBasicMaterial({ color: "#111111" });
+  SHARED.shadowMat = new THREE2.MeshBasicMaterial({ color: "#000", transparent: true, opacity: 0.25, depthWrite: false });
+  return SHARED;
+}
+var Bean = class {
+  constructor({ color = "#ff5fa2", pattern = 0, name = "", showName = true } = {}) {
+    const sh = shared();
+    this.color = color;
+    this.root = new THREE2.Group();
+    this.yawGroup = new THREE2.Group();
+    this.tilt = new THREE2.Group();
+    this.squash = new THREE2.Group();
+    this.root.add(this.yawGroup);
+    this.yawGroup.add(this.tilt);
+    this.tilt.add(this.squash);
+    const mat = new THREE2.MeshStandardMaterial({ map: bodyTexture(color, pattern), roughness: 0.55 });
+    this.material = mat;
+    const body = new THREE2.Mesh(sh.body, mat);
+    body.castShadow = true;
+    this.squash.add(body);
+    const visor = new THREE2.Mesh(sh.visor, sh.visorMat);
+    visor.scale.set(1.15, 0.72, 0.6);
+    visor.position.set(0, 0.32, 0.3);
+    this.squash.add(visor);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE2.Mesh(sh.eye, sh.eyeMat);
+      eye.position.set(0.11 * sx, 0.34, 0.47);
+      const pupil = new THREE2.Mesh(sh.pupil, sh.pupilMat);
+      pupil.position.set(0, 0, 0.045);
+      eye.add(pupil);
+      this.squash.add(eye);
+    }
+    const limbMat = new THREE2.MeshStandardMaterial({ color: new THREE2.Color(color).multiplyScalar(0.85), roughness: 0.6 });
+    const makeLimb = (x, y) => {
+      const pivot = new THREE2.Group();
+      pivot.position.set(x, y, 0);
+      const m = new THREE2.Mesh(sh.limb, limbMat);
+      m.position.y = -0.22;
+      m.castShadow = true;
+      pivot.add(m);
+      this.squash.add(pivot);
+      return pivot;
+    };
+    this.armL = makeLimb(-0.47, 0.05);
+    this.armR = makeLimb(0.47, 0.05);
+    this.legL = makeLimb(-0.2, -0.6);
+    this.legR = makeLimb(0.2, -0.6);
+    this.shadow = new THREE2.Mesh(sh.shadow, sh.shadowMat);
+    this.shadow.rotation.x = -Math.PI / 2;
+    if (showName && name) {
+      this.label = nameSprite(name, color);
+      this.root.add(this.label);
+    }
+    this.phase = Math.random() * 10;
+    this.tiltX = 0;
+    this.spin = 0;
+    this.squashV = 0;
+    this.squashY = 1;
+    this.lastState = PLAYER_STATE.NORMAL;
+    this.lastGrounded = true;
+  }
+  addTo(scene2) {
+    scene2.add(this.root);
+    scene2.add(this.shadow);
+  }
+  removeFrom(scene2) {
+    scene2.remove(this.root);
+    scene2.remove(this.shadow);
+  }
+  setVisible(v) {
+    this.root.visible = v;
+    this.shadow.visible = v;
+  }
+  popJump() {
+    this.squashV = 4;
+  }
+  popLand() {
+    this.squashV = -3;
+  }
+  /** @param s {vx, vy, vz, state, grounded, yaw, groundY} */
+  animate(dt, s) {
+    const speed = Math.hypot(s.vx, s.vz);
+    this.yawGroup.rotation.y = s.yaw;
+    if (s.grounded && !this.lastGrounded) this.popLand();
+    this.lastGrounded = s.grounded;
+    this.squashV += (1 - this.squashY) * 120 * dt - this.squashV * 12 * dt;
+    this.squashY += this.squashV * dt;
+    this.squashY = Math.min(1.3, Math.max(0.7, this.squashY));
+    this.squash.scale.set(1 / Math.sqrt(this.squashY), this.squashY, 1 / Math.sqrt(this.squashY));
+    let targetTilt = 0;
+    let legSwing = 0, armSwing = 0, armRaise = 0.15, armForward = 0;
+    switch (s.state) {
+      case PLAYER_STATE.DIVE:
+        targetTilt = 1.35;
+        armForward = -2.6;
+        legSwing = 0.3;
+        break;
+      case PLAYER_STATE.TUMBLE:
+        if (!s.grounded) {
+          this.spin += dt * 11;
+          targetTilt = this.spin;
+        } else {
+          targetTilt = 1.5;
+        }
+        armRaise = 1.2;
+        break;
+      case PLAYER_STATE.GRAB:
+        armForward = -1.5;
+        this.phase += dt * speed * 2.4;
+        legSwing = Math.sin(this.phase) * 0.6 * Math.min(1, speed / 3);
+        break;
+      case PLAYER_STATE.AIR:
+        armRaise = 2.3;
+        legSwing = 0.45;
+        break;
+      default:
+        this.phase += dt * speed * 2.4;
+        legSwing = Math.sin(this.phase) * 0.9 * Math.min(1, speed / 4);
+        armSwing = -legSwing * 0.7;
+        if (speed < 0.3) armRaise = 0.15 + Math.sin(performance.now() * 3e-3) * 0.05;
+    }
+    if (s.state !== PLAYER_STATE.TUMBLE) this.spin = 0;
+    const k = 1 - Math.exp(-14 * dt);
+    this.tiltX += (targetTilt - this.tiltX) * (s.state === PLAYER_STATE.TUMBLE && !s.grounded ? 1 : k);
+    this.tilt.rotation.x = this.tiltX;
+    const lerpRot = (obj, x, z) => {
+      obj.rotation.x += (x - obj.rotation.x) * k;
+      obj.rotation.z += (z - obj.rotation.z) * k;
+    };
+    lerpRot(this.legL, s.state === PLAYER_STATE.AIR ? legSwing : legSwing, 0);
+    lerpRot(this.legR, s.state === PLAYER_STATE.AIR ? -legSwing * 0.3 : -legSwing, 0);
+    lerpRot(this.armL, armForward || armSwing, -armRaise);
+    lerpRot(this.armR, armForward || -armSwing, armRaise);
+    if (s.groundY !== void 0 && s.groundY !== null) {
+      const h = Math.max(0, this.root.position.y - 0.85 - s.groundY);
+      this.shadow.visible = this.root.visible && h < 12;
+      this.shadow.position.set(this.root.position.x, s.groundY + 0.03, this.root.position.z);
+      const sc = Math.max(0.3, 1 - h * 0.08);
+      this.shadow.scale.set(sc, sc, sc);
+    } else {
+      this.shadow.visible = false;
+    }
+    this.lastState = s.state;
+  }
+  dispose() {
+    this.material.dispose();
+    if (this.label) {
+      this.label.material.map.dispose();
+      this.label.material.dispose();
+    }
+  }
+};
+
+// js/CameraRig.js
+import * as THREE3 from "three";
+var CameraRig = class {
+  constructor(camera2, dom) {
+    this.camera = camera2;
+    this.dom = dom;
+    this.yaw = 0;
+    this.pitch = 0.38;
+    this.dist = 9;
+    this.target = new THREE3.Vector3();
+    this.shakeAmt = 0;
+    this.dragging = false;
+    this.sens = 26e-4;
+    this.allowLock = false;
+    dom.addEventListener("mousedown", (e) => {
+      if (this.allowLock && document.pointerLockElement !== dom && e.button === 0) {
+        try {
+          const r = dom.requestPointerLock?.();
+          if (r && typeof r.catch === "function") r.catch(() => {
+          });
+        } catch {
+        }
+      }
+      this.dragging = true;
+    });
+    window.addEventListener("mouseup", () => {
+      this.dragging = false;
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (document.pointerLockElement === dom || this.dragging) this.rotate(e.movementX, e.movementY);
+    });
+    dom.addEventListener("wheel", (e) => {
+      this.dist = THREE3.MathUtils.clamp(this.dist + Math.sign(e.deltaY) * 0.8, 4, 18);
+    }, { passive: true });
+    dom.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  get locked() {
+    return document.pointerLockElement === this.dom;
+  }
+  rotate(dx, dy) {
+    this.yaw -= dx * this.sens;
+    this.pitch = THREE3.MathUtils.clamp(this.pitch + dy * this.sens, -0.25, 1.25);
+  }
+  shake(amount) {
+    this.shakeAmt = Math.max(this.shakeAmt, amount);
+  }
+  /** Unit vectors on the ground plane for camera-relative movement. */
+  basis() {
+    const f = new THREE3.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    const r = new THREE3.Vector3(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
+    return { f, r };
+  }
+  snapTo(focus) {
+    this.target.copy(focus).add(new THREE3.Vector3(0, 1.2, 0));
+  }
+  update(dt, focus) {
+    const goal = focus.clone().add(new THREE3.Vector3(0, 1.2, 0));
+    if (this.target.distanceTo(goal) > 25) this.target.copy(goal);
+    this.target.lerp(goal, 1 - Math.exp(-10 * dt));
+    const cp = Math.cos(this.pitch);
+    const off = new THREE3.Vector3(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp).multiplyScalar(this.dist);
+    this.camera.position.copy(this.target).add(off);
+    if (this.shakeAmt > 1e-3) {
+      this.camera.position.x += (Math.random() - 0.5) * this.shakeAmt;
+      this.camera.position.y += (Math.random() - 0.5) * this.shakeAmt;
+      this.shakeAmt *= Math.exp(-8 * dt);
+    }
+    this.camera.lookAt(this.target);
+  }
+  /** Slow cinematic orbit around a point (lobby / intro). */
+  orbit(dt, center, radius = 14, height = 6, speed = 0.15) {
+    this.yaw += speed * dt;
+    this.target.lerp(center, 1 - Math.exp(-4 * dt));
+    this.camera.position.set(
+      this.target.x - Math.sin(this.yaw) * radius,
+      this.target.y + height,
+      this.target.z - Math.cos(this.yaw) * radius
+    );
+    this.camera.lookAt(this.target);
+  }
+};
+
+// js/Input.js
+var Input = class {
+  constructor(cameraRig) {
+    this.rig = cameraRig;
+    this.keys = /* @__PURE__ */ new Set();
+    this.jumpCount = 0;
+    this.diveCount = 0;
+    this.mouseGrab = false;
+    this.enabled = false;
+    this.onJump = null;
+    this.onDive = null;
+    this.onKey = null;
+    this.padPrev = [];
+    window.addEventListener("keydown", (e) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.code)) e.preventDefault();
+      this.onKey?.(e.code);
+      if (e.repeat) return;
+      this.keys.add(e.code);
+      if (!this.enabled) return;
+      if (e.code === "Space") this.jump();
+      if (e.code === "KeyC" || e.code === "ControlLeft" || e.code === "ControlRight") this.dive();
+    });
+    window.addEventListener("keyup", (e) => this.keys.delete(e.code));
+    window.addEventListener("blur", () => {
+      this.keys.clear();
+      this.mouseGrab = false;
+    });
+    window.addEventListener("mousedown", (e) => {
+      if (!this.enabled || !this.rig.locked) return;
+      if (e.button === 0) this.mouseGrab = true;
+      if (e.button === 2) this.dive();
+    });
+    window.addEventListener("mouseup", (e) => {
+      if (e.button === 0) this.mouseGrab = false;
+    });
+  }
+  jump() {
+    this.jumpCount++;
+    this.onJump?.();
+  }
+  dive() {
+    this.diveCount++;
+    this.onDive?.();
+  }
+  /** Polls gamepads, returns camera-relative world move vector + grab flag. */
+  sample(dt) {
+    let f = 0, r = 0;
+    const k = this.keys;
+    if (k.has("KeyW") || k.has("ArrowUp")) f += 1;
+    if (k.has("KeyS") || k.has("ArrowDown")) f -= 1;
+    if (k.has("KeyD") || k.has("ArrowRight")) r += 1;
+    if (k.has("KeyA") || k.has("ArrowLeft")) r -= 1;
+    let grab = this.mouseGrab || k.has("ShiftLeft") || k.has("ShiftRight") || k.has("KeyE");
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const pad of pads) {
+      if (!pad) continue;
+      const dz = (v) => Math.abs(v) < 0.18 ? 0 : v;
+      r += dz(pad.axes[0] || 0);
+      f -= dz(pad.axes[1] || 0);
+      this.rig.rotate(dz(pad.axes[2] || 0) * 900 * dt, dz(pad.axes[3] || 0) * 600 * dt);
+      const pressed = (i) => !!pad.buttons[i]?.pressed;
+      if (this.enabled) {
+        if (pressed(0) && !this.padPrev[0]) this.jump();
+        if ((pressed(2) || pressed(1)) && !(this.padPrev[2] || this.padPrev[1])) this.dive();
+      }
+      grab = grab || pressed(7) || pressed(5);
+      this.padPrev = pad.buttons.map((b) => b.pressed);
+      break;
+    }
+    const len = Math.hypot(f, r);
+    if (len > 1) {
+      f /= len;
+      r /= len;
+    }
+    const { f: fw, r: rt } = this.rig.basis();
+    const mx = fw.x * f + rt.x * r;
+    const mz = fw.z * f + rt.z * r;
+    return { mx, mz, grab: this.enabled && grab };
+  }
+};
+
+// js/HUD.js
+var $ = (id) => document.getElementById(id);
+var MODE_LABEL = { [MODES.RACE]: "RACE", [MODES.SURVIVAL]: "SURVIVAL", [MODES.FINAL]: "FINAL" };
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+var HUD = class {
+  constructor() {
+    this.el = {
+      menu: $("menu"),
+      lobby: $("lobby"),
+      lobbyTimer: $("lobby-timer"),
+      lobbyList: $("lobby-list"),
+      lobbySub: $("lobby-sub"),
+      hud: $("hud"),
+      round: $("round-label"),
+      timer: $("timer"),
+      counter: $("counter"),
+      status: $("status-chip"),
+      feed: $("feed"),
+      spectate: $("spectate"),
+      ping: $("ping"),
+      help: $("help"),
+      intro: $("intro-card"),
+      introRound: $("intro-round"),
+      introName: $("intro-name"),
+      introMode: $("intro-mode"),
+      introDesc: $("intro-desc"),
+      introTarget: $("intro-target"),
+      banner: $("banner"),
+      countdown: $("countdown"),
+      results: $("results"),
+      resultsTitle: $("results-title"),
+      resultsYou: $("results-you"),
+      resultsQ: $("results-q"),
+      resultsX: $("results-x"),
+      winner: $("winner"),
+      winnerName: $("winner-name"),
+      winnerSub: $("winner-sub")
+    };
+    this.bannerTimer = null;
+    this.lastCount = null;
+  }
+  show(el, v = true) {
+    el.classList.toggle("hidden", !v);
+  }
+  hideMenu() {
+    this.show(this.el.menu, false);
+  }
+  setPing(rtt) {
+    this.el.ping.textContent = `${Math.round(rtt * 1e3)} ms`;
+  }
+  toggleHelp() {
+    this.el.help.classList.toggle("hidden");
+  }
+  // ---------------- lobby
+  showLobby(v) {
+    this.show(this.el.lobby, v);
+  }
+  updateLobby(time, roster, humans, max) {
+    this.el.lobbyTimer.textContent = humans > 0 ? `Starting in ${Math.max(0, Math.ceil(time))}s` : "Waiting\u2026";
+    this.el.lobbySub.textContent = `${humans}/${max} players \xB7 empty slots are filled with bots.`;
+    const list = roster.filter((r) => !r.isBot);
+    const html = list.map((r) => `<li><span class="dot" style="background:${esc(r.color)}"></span>${esc(r.name)}${r.wins ? ` <small>\u{1F451}\xD7${r.wins}</small>` : ""}</li>`).join("");
+    if (this.el.lobbyList.innerHTML !== html) this.el.lobbyList.innerHTML = html;
+  }
+  // ---------------- round
+  showHUD(v) {
+    this.show(this.el.hud, v);
+  }
+  setRound(info) {
+    if (!info.levelName) {
+      this.el.round.textContent = "";
+      return;
+    }
+    const isFinal = info.mode === MODES.FINAL;
+    this.el.round.textContent = `${isFinal ? "FINAL" : `ROUND ${info.roundIndex + 1}/${info.totalRounds}`} \xB7 ${info.levelName.toUpperCase()}`;
+  }
+  showIntro(info, participating) {
+    const e = this.el;
+    e.introRound.textContent = info.mode === MODES.FINAL ? "THE FINAL" : `ROUND ${info.roundIndex + 1}`;
+    e.introName.textContent = info.levelName;
+    e.introMode.textContent = MODE_LABEL[info.mode] || info.mode;
+    e.introDesc.textContent = info.description || "";
+    if (info.mode === MODES.FINAL) e.introTarget.textContent = "Grab the crown to win!";
+    else if (info.mode === MODES.SURVIVAL) e.introTarget.textContent = `Top ${info.target} of ${info.participants} survive`;
+    else e.introTarget.textContent = `${info.target} of ${info.participants} qualify`;
+    if (!participating) e.introTarget.textContent += " \xB7 You are spectating";
+    this.show(e.intro, true);
+  }
+  hideIntro() {
+    this.show(this.el.intro, false);
+  }
+  setTimer(sec, state) {
+    const e = this.el.timer;
+    if (state !== GAME_STATE.PLAYING || sec === null) {
+      e.textContent = "";
+      return;
+    }
+    const s = Math.max(0, Math.ceil(sec));
+    e.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    e.classList.toggle("low", s <= 10);
+  }
+  setCounter(mode, q, alive, target) {
+    let html = "";
+    if (mode === MODES.RACE) html = `${q}/${target}<small>QUALIFIED</small>`;
+    else if (mode === MODES.SURVIVAL) html = `${alive}<small>ALIVE \xB7 TARGET ${target}</small>`;
+    else if (mode === MODES.FINAL) html = `${alive}<small>BEANS LEFT</small>`;
+    if (html !== this.lastCount) {
+      this.el.counter.innerHTML = html;
+      this.lastCount = html;
+    }
+    this.show(this.el.counter, !!html);
+  }
+  setStatus(kind) {
+    const e = this.el.status;
+    e.className = "status-chip";
+    if (kind === "q") {
+      e.textContent = "QUALIFIED";
+      e.classList.add("q");
+    } else if (kind === "x") {
+      e.textContent = "ELIMINATED";
+      e.classList.add("x");
+    } else e.classList.add("hidden");
+  }
+  setSpectate(name) {
+    this.show(this.el.spectate, !!name);
+    if (name) this.el.spectate.innerHTML = `Spectating <b>${esc(name)}</b> \xB7 click / Tab to switch`;
+  }
+  banner(text, color = "#ffd60a", ms = 1600) {
+    const b = this.el.banner;
+    b.textContent = text;
+    b.style.color = color;
+    this.show(b, false);
+    void b.offsetWidth;
+    this.show(b, true);
+    clearTimeout(this.bannerTimer);
+    this.bannerTimer = setTimeout(() => this.show(b, false), ms);
+  }
+  countdown(n) {
+    const c = this.el.countdown;
+    if (n === null) {
+      this.show(c, false);
+      return;
+    }
+    if (c.textContent === String(n) && !c.classList.contains("hidden")) return;
+    c.textContent = String(n);
+    c.classList.remove("tick");
+    void c.offsetWidth;
+    c.classList.add("tick");
+    this.show(c, true);
+  }
+  feed(html) {
+    const d = document.createElement("div");
+    d.innerHTML = html;
+    this.el.feed.prepend(d);
+    while (this.el.feed.children.length > 6) this.el.feed.lastChild.remove();
+    setTimeout(() => d.remove(), 4500);
+  }
+  // ---------------- results / winner
+  showResults(res, roster, myNid) {
+    const e = this.el;
+    const name = (nid) => roster.get(nid);
+    const li = (nid) => {
+      const r = name(nid);
+      if (!r) return "";
+      return `<li class="${nid === myNid ? "me" : ""}"><span class="dot" style="background:${esc(r.color)}"></span>${esc(r.name)}${r.isBot ? " <small>\u{1F916}</small>" : ""}</li>`;
+    };
+    e.resultsTitle.textContent = res.finalRound ? "Show Over!" : `${res.levelName} \u2014 Results`;
+    if (res.qualified.includes(myNid)) e.resultsYou.textContent = res.finalRound ? "\u{1F451} YOU WON THE CROWN! \u{1F451}" : "\u2705 You qualified!";
+    else if (res.eliminated.includes(myNid)) e.resultsYou.textContent = "\u274C You were eliminated";
+    else e.resultsYou.textContent = "";
+    e.resultsQ.innerHTML = res.qualified.map(li).join("");
+    e.resultsX.innerHTML = res.eliminated.map(li).join("");
+    this.show(e.results, true);
+  }
+  hideResults() {
+    this.show(this.el.results, false);
+  }
+  showWinner(w, myNid) {
+    const e = this.el;
+    if (!w) {
+      e.winnerName.textContent = "No winner";
+      e.winnerSub.textContent = "Nobody made it this time!";
+    } else {
+      e.winnerName.textContent = w.name;
+      e.winnerName.style.color = w.color;
+      e.winnerSub.textContent = w.nid === myNid ? "YOU WIN THE SHOW! \u{1F389}" : `wins the show!${w.isBot ? " (bot)" : ""}`;
+    }
+    this.show(e.winner, true);
+  }
+  hideWinner() {
+    this.show(this.el.winner, false);
+  }
+};
+
+// js/Audio.js
+var Sfx = class {
+  constructor() {
+    this.ctx = null;
+    this.master = null;
+    this.muted = false;
+  }
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.6;
+      this.master.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === "suspended") this.ctx.resume();
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.master) this.master.gain.value = this.muted ? 0 : 0.6;
+    return this.muted;
+  }
+  tone(freq, dur, { type = "sine", vol = 0.2, slide = 0, delay = 0 } = {}) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime + delay;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slide) osc.frequency.linearRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+    g.gain.setValueAtTime(1e-4, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(1e-4, t0 + dur);
+    osc.connect(g).connect(this.master);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  }
+  noise(dur, vol = 0.2, cutoff = 1e3, delay = 0) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime + delay;
+    const len = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = cutoff;
+    const g = this.ctx.createGain();
+    g.gain.value = vol;
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t0);
+  }
+  jump() {
+    this.tone(380, 0.14, { type: "square", vol: 0.07, slide: 320 });
+  }
+  dive() {
+    this.tone(520, 0.2, { type: "sawtooth", vol: 0.06, slide: -320 });
+    this.noise(0.12, 0.08, 2500);
+  }
+  hit(near = 1) {
+    this.noise(0.18, 0.3 * near, 900);
+    this.tone(170, 0.22, { type: "triangle", vol: 0.25 * near, slide: -90 });
+  }
+  bump() {
+    this.tone(200, 0.2, { type: "sine", vol: 0.3, slide: 500 });
+  }
+  splash() {
+    this.noise(0.5, 0.3, 600);
+    this.tone(120, 0.3, { type: "sine", vol: 0.15, slide: -60 });
+  }
+  grab() {
+    this.tone(160, 0.09, { type: "square", vol: 0.06 });
+  }
+  tick() {
+    this.tone(1400, 0.035, { type: "square", vol: 0.025 });
+  }
+  checkpoint() {
+    this.tone(660, 0.1, { type: "triangle", vol: 0.15 });
+    this.tone(990, 0.15, { type: "triangle", vol: 0.15, delay: 0.08 });
+  }
+  beep(high = false) {
+    this.tone(high ? 880 : 440, high ? 0.4 : 0.18, { type: "square", vol: 0.1 });
+  }
+  qualify() {
+    [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.22, { type: "triangle", vol: 0.16, delay: i * 0.09 }));
+  }
+  eliminated() {
+    [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.3, { type: "sawtooth", vol: 0.08, delay: i * 0.16 }));
+  }
+  win() {
+    const notes = [523, 523, 523, 659, 784, 659, 784, 1047];
+    notes.forEach((f, i) => this.tone(f, 0.25, { type: "triangle", vol: 0.18, delay: i * 0.13 }));
+    this.noise(1.2, 0.1, 6e3, 0.9);
+  }
+};
+
+// js/Effects.js
+import * as THREE4 from "three";
+var CONFETTI = ["#ff5fa2", "#ffd60a", "#4cc9f0", "#7bd389", "#b388ff", "#ff9f1c"];
+var Effects = class {
+  constructor(scene2, max = 600) {
+    this.scene = scene2;
+    this.geo = new THREE4.BoxGeometry(1, 1, 1);
+    this.pool = [];
+    this.live = [];
+    for (let i = 0; i < max; i++) {
+      const m = new THREE4.Mesh(this.geo, new THREE4.MeshStandardMaterial({ color: "#fff", roughness: 0.5 }));
+      m.visible = false;
+      m.userData = { vel: new THREE4.Vector3(), spin: new THREE4.Vector3(), life: 0, max: 1, grav: -12, size: 0.1 };
+      scene2.add(m);
+      this.pool.push(m);
+    }
+  }
+  burst(pos, { count = 20, colors = CONFETTI, speed = 6, up = 4, size = 0.15, life = 1.2, gravity = -14, flat = false } = {}) {
+    for (let i = 0; i < count; i++) {
+      const m = this.pool.pop();
+      if (!m) return;
+      const d = m.userData;
+      m.position.set(pos.x, pos.y, pos.z);
+      const a = Math.random() * Math.PI * 2;
+      const s = speed * (0.4 + Math.random() * 0.6);
+      d.vel.set(Math.cos(a) * s, up * (0.5 + Math.random()), Math.sin(a) * s);
+      d.spin.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+      d.life = 0;
+      d.max = life * (0.7 + Math.random() * 0.6);
+      d.grav = gravity;
+      d.size = size * (0.6 + Math.random() * 0.8);
+      d.flat = flat;
+      m.scale.set(d.size, flat ? d.size * 0.25 : d.size, d.size);
+      m.material.color.set(colors[Math.random() * colors.length | 0]);
+      m.visible = true;
+      this.live.push(m);
+    }
+  }
+  confetti(pos, count = 60) {
+    this.burst(pos, { count, speed: 7, up: 9, size: 0.22, life: 2.2, gravity: -9, flat: true });
+  }
+  splash(pos) {
+    this.burst(pos, { count: 26, colors: ["#7bf27b", "#38b000", "#b5ffb5"], speed: 5, up: 7, size: 0.25, life: 1 });
+  }
+  stars(pos) {
+    this.burst(pos, { count: 14, colors: ["#ffffff", "#ffd60a", "#ffe680"], speed: 6, up: 3, size: 0.16, life: 0.6, gravity: -4 });
+  }
+  dust(pos) {
+    this.burst(pos, { count: 6, colors: ["#ffffff", "#e0e0e0"], speed: 2, up: 1, size: 0.18, life: 0.4, gravity: 0 });
+  }
+  update(dt) {
+    for (let i = this.live.length - 1; i >= 0; i--) {
+      const m = this.live[i];
+      const d = m.userData;
+      d.life += dt;
+      if (d.life >= d.max) {
+        m.visible = false;
+        this.live.splice(i, 1);
+        this.pool.push(m);
+        continue;
+      }
+      d.vel.y += d.grav * dt;
+      m.position.addScaledVector(d.vel, dt);
+      m.rotation.x += d.spin.x * dt;
+      m.rotation.y += d.spin.y * dt;
+      m.rotation.z += d.spin.z * dt;
+      const k = 1 - d.life / d.max;
+      const sc = d.size * Math.max(0.05, k);
+      m.scale.set(sc, d.flat ? sc * 0.25 : sc, sc);
+    }
+  }
+};
+
+// js/main.js
+var canvas = document.getElementById("game");
+var renderer = new THREE5.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
+renderer.toneMapping = THREE5.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE5.SRGBColorSpace;
+var scene = new THREE5.Scene();
+var camera = new THREE5.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 700);
+var hemi = new THREE5.HemisphereLight("#ffffff", "#7a6aa8", 1.3);
+scene.add(hemi);
+var sun = new THREE5.DirectionalLight("#fff4e0", 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 140 });
+sun.shadow.bias = -5e-4;
+scene.add(sun, sun.target);
+function applyTheme(theme) {
+  scene.background = new THREE5.Color(theme.sky);
+  scene.fog = new THREE5.Fog(theme.fog, theme.fogNear, theme.fogFar);
+}
+applyTheme({ sky: "#7cc8ff", fog: "#cdeeff", fogNear: 60, fogFar: 260 });
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+var rig = new CameraRig(camera, canvas);
+var input = new Input(rig);
+var hud = new HUD();
+var sfx = new Sfx();
+var fx = new Effects(scene);
+var net = new Network();
+var game = {
+  joined: false,
+  myNid: null,
+  roster: /* @__PURE__ */ new Map(),
+  state: GAME_STATE.LOBBY,
+  stateInfo: null,
+  stateTime: 0,
+  stateTimeAt: 0,
+  level: null,
+  levelInfo: null,
+  beans: /* @__PURE__ */ new Map(),
+  snaps: [],
+  ltOffset: null,
+  server: null,
+  pred: null,
+  myStatus: null,
+  spectateNid: null,
+  lastCountdown: null,
+  counts: { q: 0, a: 0 },
+  groundCache: /* @__PURE__ */ new Map(),
+  frame: 0
+};
+var store = {
+  get(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch {
+    }
+  }
+};
+var profile = {
+  name: store.get("br_name") || "",
+  color: store.get("br_color") || BEAN_COLORS[Math.floor(Math.random() * BEAN_COLORS.length)],
+  pattern: Number(store.get("br_pattern") || 0)
+};
+var lobbyStage = new THREE5.Group();
+{
+  const plat = new THREE5.Mesh(new THREE5.CylinderGeometry(7, 7.5, 1, 48), new THREE5.MeshStandardMaterial({ color: "#ffd6e8", roughness: 0.6 }));
+  plat.position.y = -0.5;
+  plat.receiveShadow = true;
+  lobbyStage.add(plat);
+  const ring = new THREE5.Mesh(new THREE5.TorusGeometry(7.1, 0.25, 12, 64), new THREE5.MeshStandardMaterial({ color: "#ff5fa2", emissive: "#661133" }));
+  ring.rotation.x = Math.PI / 2;
+  lobbyStage.add(ring);
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE5.Mesh(new THREE5.IcosahedronGeometry(1.5 + Math.random() * 2, 0), new THREE5.MeshStandardMaterial({ color: BEAN_COLORS[i % BEAN_COLORS.length], flatShading: true }));
+    const a = i / 10 * Math.PI * 2;
+    m.position.set(Math.cos(a) * 30, 4 + Math.random() * 10, Math.sin(a) * 30);
+    m.userData.spin = 0.3 + Math.random() * 0.5;
+    lobbyStage.add(m);
+  }
+}
+scene.add(lobbyStage);
+var lobbyBeans = /* @__PURE__ */ new Map();
+var previewBean = null;
+function rebuildPreview() {
+  if (previewBean) {
+    previewBean.removeFrom(scene);
+    previewBean.dispose();
+  }
+  previewBean = new Bean({ color: profile.color, pattern: profile.pattern, showName: false });
+  previewBean.root.position.set(0, 0.85, 0);
+  previewBean.addTo(scene);
+}
+function syncLobbyBeans() {
+  const humans = [...game.roster.values()].filter((r) => !r.isBot);
+  const keep = new Set(humans.map((h) => h.nid));
+  for (const [nid, b] of lobbyBeans) if (!keep.has(nid)) {
+    b.removeFrom(scene);
+    b.dispose();
+    lobbyBeans.delete(nid);
+  }
+  humans.forEach((h, i) => {
+    let b = lobbyBeans.get(h.nid);
+    if (!b) {
+      b = new Bean({ color: h.color, pattern: h.pattern, name: h.name, showName: h.nid !== game.myNid });
+      b.addTo(scene);
+      lobbyBeans.set(h.nid, b);
+    }
+    const a = i / Math.max(1, humans.length) * Math.PI * 2;
+    const r = humans.length === 1 ? 0 : Math.min(5.5, 1.2 + humans.length * 0.3);
+    b.root.position.set(Math.sin(a) * r, 0.85, Math.cos(a) * r);
+    b.homeYaw = a;
+  });
+}
+function setLobbyVisible(v) {
+  lobbyStage.visible = v;
+  for (const b of lobbyBeans.values()) b.setVisible(v);
+  if (previewBean) previewBean.setVisible(v && !game.joined);
+}
+function initMenu() {
+  const nameInput = document.getElementById("name-input");
+  nameInput.value = profile.name;
+  const sw = document.getElementById("swatches");
+  BEAN_COLORS.forEach((c) => {
+    const b = document.createElement("button");
+    b.style.background = c;
+    if (c === profile.color) b.classList.add("selected");
+    b.onclick = () => {
+      profile.color = c;
+      sw.querySelectorAll("button").forEach((x) => x.classList.toggle("selected", x === b));
+      rebuildPreview();
+    };
+    sw.appendChild(b);
+  });
+  document.querySelectorAll("#patterns button").forEach((b) => {
+    b.classList.toggle("selected", Number(b.dataset.pattern) === profile.pattern);
+    b.onclick = () => {
+      profile.pattern = Number(b.dataset.pattern);
+      document.querySelectorAll("#patterns button").forEach((x) => x.classList.toggle("selected", x === b));
+      rebuildPreview();
+    };
+  });
+  const play = document.getElementById("play-btn");
+  const go = () => {
+    profile.name = nameInput.value.trim();
+    store.set("br_name", profile.name);
+    store.set("br_color", profile.color);
+    store.set("br_pattern", String(profile.pattern));
+    sfx.unlock();
+    play.disabled = true;
+    document.getElementById("menu-status").textContent = "Loading physics\u2026";
+    net.join({ name: profile.name, color: profile.color, pattern: profile.pattern });
+  };
+  play.onclick = go;
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") go();
+  });
+  rebuildPreview();
+}
+initMenu();
+net.on("connect_error", () => {
+  document.getElementById("menu-status").textContent = "Could not load the physics engine. Check your connection and reload.";
+  document.getElementById("play-btn").disabled = false;
+});
+net.on("disconnect", () => {
+  hud.feed("\u26A0\uFE0F Disconnected \u2014 reconnecting\u2026");
+});
+net.on("welcome", (msg) => {
+  game.joined = true;
+  game.myNid = msg.nid;
+  hud.hideMenu();
+  if (previewBean) previewBean.setVisible(false);
+  rig.allowLock = true;
+});
+net.on("roster", (list) => {
+  game.roster = new Map(list.map((r) => [r.nid, r]));
+  if (game.state === GAME_STATE.LOBBY) syncLobbyBeans();
+});
+net.on("state", (msg) => {
+  const prev = game.state;
+  game.state = msg.state;
+  game.stateInfo = msg;
+  game.stateTime = msg.time;
+  game.stateTimeAt = performance.now() / 1e3;
+  onStateChange(prev, msg);
+});
+net.on("level", (pkt) => loadLevel(pkt));
+net.on("snap", (s) => onSnap(s));
+net.on("results", (res) => {
+  hud.showResults(res, game.roster, game.myNid);
+});
+net.on("winner", (w) => {
+  hud.hideResults();
+  hud.showWinner(w, game.myNid);
+  sfx.win();
+  const bean = w && game.beans.get(w.nid);
+  const p = bean ? bean.root.position.clone() : rig.target.clone();
+  for (let i = 0; i < 4; i++) setTimeout(() => fx.confetti(p.clone().add(new THREE5.Vector3(0, 2, 0)), 80), i * 400);
+  if (w) game.spectateNid = w.nid;
+});
+function onStateChange(prev, msg) {
+  switch (msg.state) {
+    case GAME_STATE.LOBBY:
+      unloadLevel();
+      hud.hideResults();
+      hud.hideWinner();
+      hud.hideIntro();
+      hud.showHUD(false);
+      hud.countdown(null);
+      if (game.joined) hud.showLobby(true);
+      applyTheme({ sky: "#7cc8ff", fog: "#cdeeff", fogNear: 60, fogFar: 260 });
+      setLobbyVisible(true);
+      syncLobbyBeans();
+      game.myStatus = null;
+      hud.setStatus(null);
+      break;
+    case GAME_STATE.INTRO:
+      hud.showLobby(false);
+      hud.hideResults();
+      hud.hideWinner();
+      hud.showHUD(true);
+      hud.setRound(msg);
+      hud.showIntro(msg, game.participants?.has(game.myNid));
+      break;
+    case GAME_STATE.COUNTDOWN:
+      hud.hideIntro();
+      game.lastCountdown = null;
+      break;
+    case GAME_STATE.PLAYING:
+      hud.countdown(null);
+      hud.hideIntro();
+      hud.banner("GO!", "#7bd389", 900);
+      sfx.beep(true);
+      break;
+    case GAME_STATE.ROUND_END:
+      hud.countdown(null);
+      if (!game.myStatus || game.myStatus === "playing") hud.banner("ROUND OVER", "#ffd60a", 1500);
+      break;
+    case GAME_STATE.WINNER:
+      hud.hideResults();
+      break;
+  }
+}
+function clearBeans() {
+  for (const b of game.beans.values()) {
+    b.removeFrom(scene);
+    b.dispose();
+  }
+  game.beans.clear();
+}
+function unloadLevel() {
+  if (game.level) game.level.dispose();
+  game.level = null;
+  game.levelInfo = null;
+  clearBeans();
+  game.snaps = [];
+  game.server = null;
+  game.pred = null;
+  game.ltOffset = null;
+  game.groundCache.clear();
+}
+function loadLevel(pkt) {
+  unloadLevel();
+  setLobbyVisible(false);
+  hud.showLobby(false);
+  game.levelInfo = pkt;
+  game.level = new LevelBuilder2(scene, pkt.level);
+  game.level.applySync(pkt.sync);
+  applyTheme(pkt.level.theme);
+  game.participants = new Set(pkt.participants);
+  game.myStatus = game.participants.has(game.myNid) ? "playing" : "spectating";
+  hud.setStatus(null);
+  for (const nid of pkt.participants) {
+    const r = game.roster.get(nid) || { name: "???", color: "#cccccc", pattern: 0 };
+    const bean = new Bean({ color: r.color, pattern: r.pattern, name: r.name, showName: nid !== game.myNid });
+    bean.addTo(scene);
+    bean.setVisible(false);
+    game.beans.set(nid, bean);
+  }
+  const sc = pkt.level.spawn.center;
+  rig.yaw = 0;
+  rig.snapTo(new THREE5.Vector3(sc[0], sc[1], sc[2]));
+  game.spectateNid = null;
+}
+function estLt() {
+  return game.ltOffset === null ? 0 : performance.now() / 1e3 + game.ltOffset;
+}
+function onSnap(s) {
+  if (!game.level) return;
+  const now = performance.now() / 1e3;
+  const sample = s.lt - now;
+  if (game.ltOffset === null || Math.abs(sample - game.ltOffset) > 0.5) game.ltOffset = sample;
+  else game.ltOffset += (sample - game.ltOffset) * 0.05;
+  const players = /* @__PURE__ */ new Map();
+  for (const a of s.p) players.set(a[0], a);
+  game.snaps.push({ lt: s.lt, players });
+  if (game.snaps.length > 40) game.snaps.shift();
+  game.stateTime = s.tr;
+  game.stateTimeAt = now;
+  game.counts = { q: s.q, a: s.a };
+  game.level.applySnapshot(s);
+  const mine = players.get(game.myNid);
+  if (mine) {
+    game.server = {
+      pos: new THREE5.Vector3(mine[1], mine[2], mine[3]),
+      vel: new THREE5.Vector3(mine[6], mine[7], mine[8]),
+      yaw: mine[4],
+      state: mine[5],
+      grounded: !!mine[10],
+      at: now
+    };
+  } else {
+    game.server = null;
+  }
+  for (const e of s.e) handleEvent(e);
+  hud.setCounter(game.levelInfo.level.mode, s.q, s.a, game.levelInfo.target);
+}
+function proximity(p) {
+  const d = p.distanceTo(camera.position);
+  return clamp(1 - d / 40, 0, 1);
+}
+function rosterName(nid) {
+  const r = game.roster.get(nid);
+  return r ? `<b style="color:${r.color}">${r.name.replace(/</g, "&lt;")}</b>` : "Someone";
+}
+function handleEvent(e) {
+  const lvl = game.level;
+  if (lvl.handleEvent(e)) {
+    if (e[0] === "bump") sfx.bump();
+    if (e[0] === "tw" && game.server) {
+      const t = lvl.tiles.get(e[1]);
+      if (t && t.mesh.position.distanceTo(game.server.pos) < 3) sfx.tick();
+    }
+    return;
+  }
+  const [type, nid] = e;
+  const isMe = nid === game.myNid;
+  const bean = game.beans.get(nid);
+  switch (type) {
+    case "j":
+      bean?.popJump();
+      if (isMe) {
+        sfx.jump();
+        if (game.pred) game.pred.jumpPending = false;
+      }
+      break;
+    case "d":
+      if (isMe) sfx.dive();
+      break;
+    case "h": {
+      const p = new THREE5.Vector3(e[2], e[3], e[4]);
+      fx.stars(p);
+      if (isMe) {
+        rig.shake(0.6);
+        sfx.hit(1);
+      } else {
+        const n = proximity(p);
+        if (n > 0.2) sfx.hit(n * 0.5);
+      }
+      break;
+    }
+    case "r":
+      if (bean) fx.splash(bean.root.position.clone());
+      if (isMe) {
+        sfx.splash();
+        game.pred = null;
+        rig.shake(0.3);
+      }
+      break;
+    case "q":
+      if (bean) {
+        fx.confetti(bean.root.position.clone(), 40);
+        bean.setVisible(false);
+      }
+      hud.feed(`${rosterName(nid)} qualified!`);
+      if (isMe) {
+        game.myStatus = "q";
+        hud.setStatus("q");
+        hud.banner("QUALIFIED!", "#7bd389", 2200);
+        sfx.qualify();
+        document.exitPointerLock?.();
+      }
+      break;
+    case "x":
+      if (bean) {
+        fx.splash(bean.root.position.clone());
+        bean.setVisible(false);
+      }
+      hud.feed(`${rosterName(nid)} was eliminated`);
+      if (isMe) {
+        game.myStatus = "x";
+        hud.setStatus("x");
+        hud.banner("ELIMINATED", "#ff4d6d", 2200);
+        sfx.eliminated();
+        document.exitPointerLock?.();
+      }
+      break;
+    case "cp":
+      if (isMe) {
+        sfx.checkpoint();
+        hud.feed("\u{1F6A9} Checkpoint reached!");
+      }
+      break;
+    case "g":
+      if (isMe || e[2] === game.myNid) sfx.grab();
+      if (e[2] === game.myNid) hud.feed(`${rosterName(nid)} grabbed you!`);
+      break;
+    case "crown": {
+      const cp = lvl.crownPosition(estLt());
+      if (cp) fx.confetti(cp, 120);
+      if (lvl.crown) lvl.crown.node.visible = false;
+      hud.banner(isMe ? "YOU GOT THE CROWN!" : `${game.roster.get(nid)?.name ?? "?"} GOT THE CROWN!`, "#ffd60a", 3e3);
+      game.spectateNid = nid;
+      break;
+    }
+    default:
+      break;
+  }
+}
+function groundYFor(nid, pos) {
+  const c = game.groundCache.get(nid);
+  if (c && game.frame - c.f < 3 && Math.abs(c.x - pos.x) < 0.5 && Math.abs(c.z - pos.z) < 0.5) return c.y;
+  const y = game.level.groundHeight(pos);
+  game.groundCache.set(nid, { f: game.frame, x: pos.x, z: pos.z, y });
+  return y;
+}
+function sampleRemote(nid, renderLt, latest) {
+  const snaps = game.snaps;
+  let a = null, b = null;
+  for (let i = snaps.length - 1; i >= 0; i--) {
+    if (snaps[i].lt <= renderLt) {
+      a = snaps[i];
+      b = snaps[i + 1] || null;
+      break;
+    }
+  }
+  const pa = a?.players.get(nid);
+  const pb = b?.players.get(nid);
+  if (pa && pb) {
+    const t = clamp((renderLt - a.lt) / Math.max(1e-4, b.lt - a.lt), 0, 1);
+    return {
+      x: lerp(pa[1], pb[1], t),
+      y: lerp(pa[2], pb[2], t),
+      z: lerp(pa[3], pb[3], t),
+      yaw: angleLerp(pa[4], pb[4], t),
+      state: pb[5],
+      vx: pb[6],
+      vy: pb[7],
+      vz: pb[8],
+      grounded: !!pb[10]
+    };
+  }
+  const p = pb || pa || latest;
+  const snapLt = (pb ? b : pa ? a : snaps[snaps.length - 1]).lt;
+  const ex = clamp(renderLt - snapLt, 0, 0.2);
+  return { x: p[1] + p[6] * ex, y: p[2] + p[7] * ex, z: p[3] + p[8] * ex, yaw: p[4], state: p[5], vx: p[6], vy: p[7], vz: p[8], grounded: !!p[10] };
+}
+function updateLocal(dt, inp, bean, nowS) {
+  const sv = game.server;
+  if (!sv) return;
+  if (!game.pred) game.pred = { pos: sv.pos.clone(), vel: sv.vel.clone(), yaw: sv.yaw, jumpPending: false, jumpT: 0, jumpOffset: 0 };
+  const P = game.pred;
+  const age = Math.min(0.25, nowS - sv.at + net.rtt / 2);
+  const ext = sv.pos.clone().addScaledVector(sv.vel, age);
+  if (!sv.grounded) ext.y += 0.5 * PHYS.gravity * age * age;
+  const controllable = game.state === GAME_STATE.PLAYING && input.enabled && (sv.state === PLAYER_STATE.NORMAL || sv.state === PLAYER_STATE.AIR || sv.state === PLAYER_STATE.GRAB);
+  if (controllable) {
+    const speed = PHYS.runSpeed * (sv.state === PLAYER_STATE.GRAB ? 0.55 : 1);
+    const accel = sv.grounded ? PHYS.accelGround : PHYS.accelAir;
+    let dx = inp.mx * speed - P.vel.x, dz = inp.mz * speed - P.vel.z;
+    const dl = Math.hypot(dx, dz), m = accel * dt;
+    if (dl > m) {
+      dx *= m / dl;
+      dz *= m / dl;
+    }
+    P.vel.x += dx;
+    P.vel.z += dz;
+    P.pos.x += P.vel.x * dt;
+    P.pos.z += P.vel.z * dt;
+    const k = 1 - Math.exp(-5 * dt);
+    P.pos.x += (ext.x - P.pos.x) * k;
+    P.pos.z += (ext.z - P.pos.z) * k;
+    const kv = 1 - Math.exp(-2 * dt);
+    P.vel.x += (sv.vel.x - P.vel.x) * kv;
+    P.vel.z += (sv.vel.z - P.vel.z) * kv;
+    if (Math.hypot(inp.mx, inp.mz) > 0.1) P.yaw = angleLerp(P.yaw, Math.atan2(inp.mx, inp.mz), Math.min(1, 14 * dt));
+  } else {
+    const k = 1 - Math.exp(-15 * dt);
+    P.pos.x += (ext.x - P.pos.x) * k;
+    P.pos.z += (ext.z - P.pos.z) * k;
+    P.vel.copy(sv.vel);
+    P.yaw = angleLerp(P.yaw, sv.yaw, k);
+  }
+  P.pos.y += (ext.y - P.pos.y) * (1 - Math.exp(-20 * dt));
+  if (P.pos.distanceTo(ext) > 4) P.pos.copy(ext);
+  if (P.jumpPending) {
+    P.jumpT += dt;
+    P.jumpOffset = Math.max(0, PHYS.jumpVel * P.jumpT + 0.5 * PHYS.gravity * P.jumpT * P.jumpT);
+    if (P.jumpT > 0.4) P.jumpPending = false;
+  } else {
+    P.jumpOffset *= Math.exp(-10 * dt);
+  }
+  bean.root.position.set(P.pos.x, P.pos.y + P.jumpOffset, P.pos.z);
+  bean.animate(dt, {
+    vx: P.vel.x,
+    vy: sv.vel.y,
+    vz: P.vel.z,
+    state: P.jumpPending ? PLAYER_STATE.AIR : sv.state,
+    grounded: sv.grounded && !P.jumpPending,
+    yaw: P.yaw,
+    groundY: groundYFor(game.myNid, bean.root.position)
+  });
+}
+input.onJump = () => {
+  const sv = game.server;
+  if (game.pred && sv && sv.grounded && game.state === GAME_STATE.PLAYING && sv.state !== PLAYER_STATE.TUMBLE && sv.state !== PLAYER_STATE.DIVE) {
+    game.pred.jumpPending = true;
+    game.pred.jumpT = 0;
+    game.pred.jumpOffset = 0;
+    game.beans.get(game.myNid)?.popJump();
+  }
+};
+function visibleNids() {
+  const latest = game.snaps[game.snaps.length - 1];
+  return latest ? [...latest.players.keys()] : [];
+}
+function cycleSpectate(dir = 1) {
+  const ids = visibleNids().filter((n) => n !== game.myNid);
+  if (!ids.length) {
+    game.spectateNid = null;
+    return;
+  }
+  const i = ids.indexOf(game.spectateNid);
+  game.spectateNid = ids[(i + dir + ids.length) % ids.length];
+}
+canvas.addEventListener("click", () => {
+  if (game.level && !isMeActive()) cycleSpectate(1);
+});
+input.onKey = (code) => {
+  if (code === "Tab" && game.level && !isMeActive()) cycleSpectate(1);
+  if (code === "KeyH") hud.toggleHelp();
+  if (code === "KeyM") hud.feed(sfx.toggleMute() ? "\u{1F507} Sound off" : "\u{1F50A} Sound on");
+};
+function isMeActive() {
+  const latest = game.snaps[game.snaps.length - 1];
+  return !!latest && latest.players.has(game.myNid);
+}
+function updateWorld(dt, nowS, inp) {
+  const lvl = game.level;
+  const lt = estLt();
+  lvl.update(lt, dt);
+  const latest = game.snaps[game.snaps.length - 1];
+  const renderLt = lt - INTERP_DELAY;
+  let focus = null;
+  for (const [nid, bean] of game.beans) {
+    const cur = latest?.players.get(nid);
+    if (!cur) {
+      bean.setVisible(false);
+      continue;
+    }
+    bean.setVisible(true);
+    if (nid === game.myNid) {
+      updateLocal(dt, inp, bean, nowS);
+      focus = bean.root.position;
+      continue;
+    }
+    const s = sampleRemote(nid, renderLt, cur);
+    bean.root.position.set(s.x, s.y, s.z);
+    const near = bean.root.position.distanceTo(camera.position) < 60;
+    bean.animate(dt, { ...s, groundY: near ? groundYFor(nid, bean.root.position) : null });
+  }
+  if (focus) {
+    hud.setSpectate(null);
+    rig.update(dt, focus);
+  } else {
+    const ids = visibleNids();
+    if (!ids.includes(game.spectateNid)) game.spectateNid = ids.find((n) => n !== game.myNid) ?? null;
+    const target = game.spectateNid !== null ? game.beans.get(game.spectateNid) : null;
+    if (target && game.state !== GAME_STATE.INTRO) {
+      hud.setSpectate(game.state === GAME_STATE.WINNER ? null : game.roster.get(game.spectateNid)?.name);
+      rig.update(dt, target.root.position);
+    } else {
+      hud.setSpectate(null);
+      const sc = game.levelInfo.level.spawn.center;
+      rig.orbit(dt, new THREE5.Vector3(sc[0], sc[1], sc[2]), 18, 8, 0.2);
+    }
+  }
+}
+var last = performance.now();
+var inputAccum = 0;
+var pingAccum = 0;
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - last) / 1e3);
+  last = now;
+  const nowS = now / 1e3;
+  game.frame++;
+  input.enabled = game.joined && game.state === GAME_STATE.PLAYING && isMeActive();
+  rig.allowLock = input.enabled;
+  const inp = input.sample(dt);
+  if (!input.enabled) {
+    inp.mx = 0;
+    inp.mz = 0;
+  }
+  inputAccum += dt;
+  if (game.joined && inputAccum >= 1 / INPUT_RATE) {
+    inputAccum = 0;
+    net.sendInput({ mx: +inp.mx.toFixed(3), mz: +inp.mz.toFixed(3), grab: inp.grab, jc: input.jumpCount, dc: input.diveCount, yaw: +rig.yaw.toFixed(3) });
+  }
+  if (game.level) {
+    updateWorld(dt, nowS, inp);
+  } else {
+    rig.orbit(dt, new THREE5.Vector3(0, 1.2, 0), 9, 2.5, 0.25);
+    for (const c of lobbyStage.children) if (c.userData.spin) {
+      c.rotation.y += c.userData.spin * dt;
+      c.rotation.x += c.userData.spin * 0.5 * dt;
+    }
+    if (previewBean && previewBean.root.visible) previewBean.animate(dt, { vx: 0, vy: 0, vz: 0, state: PLAYER_STATE.NORMAL, grounded: true, yaw: Math.sin(nowS * 0.8) * 0.6, groundY: 0 });
+    for (const b of lobbyBeans.values()) {
+      b.animate(dt, { vx: 0, vy: 0, vz: 0, state: PLAYER_STATE.NORMAL, grounded: true, yaw: b.homeYaw ?? 0, groundY: 0 });
+    }
+  }
+  const remaining = game.stateTime - (nowS - game.stateTimeAt);
+  if (game.state === GAME_STATE.LOBBY && game.stateInfo) {
+    hud.updateLobby(remaining, [...game.roster.values()], game.stateInfo.humans ?? 0, game.stateInfo.maxPlayers ?? 20);
+  }
+  hud.setTimer(remaining, game.state);
+  if (game.state === GAME_STATE.COUNTDOWN) {
+    const n = Math.max(1, Math.ceil(remaining));
+    if (n !== game.lastCountdown) {
+      game.lastCountdown = n;
+      sfx.beep(false);
+    }
+    hud.countdown(n);
+  }
+  pingAccum += dt;
+  if (pingAccum > 1) {
+    pingAccum = 0;
+    hud.setPing(net.rtt);
+  }
+  fx.update(dt);
+  const f = rig.target;
+  sun.position.set(f.x + 25, f.y + 45, f.z - 15);
+  sun.target.position.copy(f);
+  sun.target.updateMatrixWorld();
+  renderer.render(scene, camera);
+}
+frame();
+
+</script>
+</body>
+</html>
