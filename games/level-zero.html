@@ -308,6 +308,14 @@ ul.how{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap
 ul.how li::before{content:"> ";color:var(--wallpaper)}
 kbd{font:inherit;border:1px solid var(--dim);padding:0 5px}
 #net{color:var(--dim)}
+#menu{overflow-y:auto}
+#lobby{border:1px solid var(--dim);padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:rgba(0,0,0,.35)}
+#lobby .lbt{color:var(--wallpaper);letter-spacing:2px}
+#lobby button{font-size:20px;padding:4px 14px}
+#lobby button[disabled]{opacity:.45;cursor:default}
+#lglist{display:flex;flex-direction:column;gap:6px;max-height:210px;overflow-y:auto}
+#lglist .g{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px dashed var(--dim);padding-top:6px}
+#lglist .g span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tape)}
 #end{background:rgba(7,6,2,.72);justify-content:center;text-align:center}
 #end .card{align-items:center}
 #mute{position:fixed;right:16px;bottom:44px;pointer-events:auto;display:none}
@@ -384,10 +392,14 @@ kbd{font:inherit;border:1px solid var(--dim);padding:0 5px}
       <input id="nick" type="text" maxlength="14" autocomplete="off" spellcheck="false">
     </div>
     <div class="row">
-      <button id="go" type="button">ENTER LEVEL 0</button>
+      <button id="go" type="button">PLAY SOLO</button>
       <label for="startLevel" style="margin:0">Start in</label>
       <select id="startLevel"><option value="0">Level 0</option><option value="1">Blackout</option><option value="2">Poolrooms</option><option value="3">Party Room</option><option value="4">Level !</option><option value="5">Facility</option><option value="6">Happy Home</option><option value="7">The Mall</option><option value="8">Flooding Basement</option><option value="9">Mirror Halls</option><option value="10">The Night Shift</option><option value="11">The Elevator</option></select>
-      <span id="net">Checking who else is here...</span>
+      <span id="net">Checking for online games...</span>
+    </div>
+    <div id="lobby">
+      <div class="row" style="justify-content:space-between"><span class="lbt">ONLINE GAMES <span class="dim">(MAX 4 PLAYERS)</span></span><button id="hostb" type="button" disabled>HOST ONLINE GAME</button></div>
+      <div id="lglist"><div class="dim">Looking for open games...</div></div>
     </div>
     <div class="row">
       <button id="shopb" type="button">SHOP</button>
@@ -3623,22 +3635,80 @@ $('go').addEventListener('click',function(){enter(+$('startLevel').value||0)});
 nick.addEventListener('keydown',function(e){if(e.key==='Enter')enter(+$('startLevel').value||0)});
 
 
+var lobbyBase=null,lobbyRoom=null,myGame=null,lobbyMsg='',joining=false;
+var MAXP=4,LVNAMES=['Level 0','Blackout','Poolrooms','Party Room','Level !','Facility','Happy Home','The Mall','Flooding Basement','Mirror Halls','The Night Shift','The Elevator'];
 function netLabel(){
   var el=$('net');if(state!=='menu')return;
-  if(!room){el.textContent='Solo mode: live multiplayer is not available in this view.';return}
-  var n=0;others.forEach(function(){n++});
-  el.textContent=n?(n+(n===1?' player is':' players are')+' already inside. Join them.'):'Online. Anyone who opens this page joins your level.';
+  el.textContent=lobbyMsg||(lobbyRoom?'Host a game, join one below, or play solo.':'Checking for online games...');
 }
+function gameCount(){var n=0;if(!room)return 0;try{room.peers().forEach(function(p){if(p&&(p.sameTab||(p.presence&&typeof p.presence.r==='number')))n++})}catch(e){}return n}
+function lobbyTick(){
+  if(!lobbyRoom)return;
+  var mine=myGame?{g:myGame.id,gn:myGame.gn,n:Math.max(1,gameCount()),lv:ltype|0}:{g:null};
+  try{var pr=lobbyRoom.presence(mine);if(pr&&pr.catch)pr.catch(function(){})}catch(e){}
+  if(state!=='menu')return;
+  var games={},list=[];
+  try{list=lobbyRoom.peers()}catch(e){list=[]}
+  list.forEach(function(p){
+    if(!p||p.sameTab)return;var q=p.presence||{};
+    if(typeof q.g!=='string'||!/^[a-z0-9]{4,8}$/.test(q.g))return;
+    var g=games[q.g]||(games[q.g]={id:q.g,gn:'',n:0,lv:0});
+    g.n=Math.max(g.n,num(q.n,1,99,1)|0);g.lv=num(q.lv,0,11,0)|0;if(!g.gn&&typeof q.gn==='string')g.gn=cleanName(q.gn.replace(/'S GAME$/,''))+"'S GAME";
+  });
+  var box=$('lglist'),ids=Object.keys(games);
+  ids.sort(function(a,b){return (games[a].n>=MAXP)-(games[b].n>=MAXP)||games[b].n-games[a].n});
+  box.textContent='';
+  if(!ids.length){var d=document.createElement('div');d.className='dim';d.textContent='No open games right now. Host one and your friends will see it here.';box.appendChild(d);return}
+  ids.forEach(function(id){
+    var g=games[id],row=document.createElement('div');row.className='g';
+    var t=document.createElement('span');t.textContent=(g.gn||'A GAME')+'  ·  '+(LVNAMES[g.lv]||'Level 0')+'  ·  '+Math.min(g.n,MAXP)+'/'+MAXP;
+    var b=document.createElement('button');b.type='button';
+    if(g.n>=MAXP){b.textContent='FULL';b.disabled=true}
+    else{b.textContent='JOIN';b.disabled=joining;b.addEventListener('click',function(){joinGame(g.id,g.gn)})}
+    row.appendChild(t);row.appendChild(b);box.appendChild(row);
+  });
+}
+function newCode(){var c='',a='abcdefghjkmnpqrstuvwxyz23456789';for(var i=0;i<5;i++)c+=a[(Math.random()*a.length)|0];return c}
+async function hostGame(){
+  if(!lobbyBase||joining)return;joining=true;$('hostb').disabled=true;lobbyMsg='Starting your game...';netLabel();
+  var id=newCode(),r=null;
+  try{r=await lobbyBase.join('lz-game-'+id)}catch(e){r=null}
+  joining=false;$('hostb').disabled=false;
+  if(!r){lobbyMsg='Could not start an online game. Try again or play solo.';netLabel();return}
+  room=r;myGame={id:id,gn:cleanName(nick.value.trim())+"'S GAME"};lobbyMsg='';
+  try{room.onPeers(function(){},function(){})}catch(e){}
+  enter(+$('startLevel').value||0);sendPresence(true);lobbyTick();
+}
+async function joinGame(id,gn){
+  if(!lobbyBase||joining)return;joining=true;$('hostb').disabled=true;lobbyMsg='Joining '+(gn||'the game')+'...';netLabel();lobbyTick();
+  var r=null;try{r=await lobbyBase.join('lz-game-'+id)}catch(e){r=null}
+  var n=0;
+  if(r){
+    // wait until we can see the players already in that game
+    for(var i=0;i<20;i++){
+      await new Promise(function(res){setTimeout(res,200)});
+      n=0;try{r.peers().forEach(function(p){if(p&&!p.sameTab&&p.presence&&typeof p.presence.r==='number')n++})}catch(e){}
+      if(n>0&&i>=5)break;
+    }
+  }
+  joining=false;$('hostb').disabled=false;
+  if(!r||n===0){if(r)try{r.leave()}catch(e){};lobbyMsg='That game has ended. Pick another one or host your own.';netLabel();lobbyTick();return}
+  if(n>=MAXP){try{r.leave()}catch(e){};lobbyMsg='That game is full (4 players). Pick another one or host your own.';netLabel();lobbyTick();return}
+  room=r;myGame={id:id,gn:gn||'A GAME'};lobbyMsg='';
+  try{room.onPeers(function(){},function(){})}catch(e){}
+  readPeers(0);enter(0);sendPresence(true);lobbyTick();
+}
+$('hostb').addEventListener('click',hostGame);
 (async function connect(){
   for(var i=0;i<24&&!(window.claude&&window.claude.use);i++)await new Promise(function(r){setTimeout(r,250)});
-  var rm=null;
-  try{if(window.claude&&window.claude.use)rm=await window.claude.use('room')}catch(e){rm=null}
-  if(rm){
-    room=rm;
-    try{room.onPeers(function(){},function(){room=null;netLabel()})}catch(e){}
-    try{room.onConnection(function(){},function(){})}catch(e){}
-    sendPresence(true);
+  var base=null;
+  try{if(window.claude&&window.claude.use)base=await window.claude.use('room')}catch(e){base=null}
+  if(base&&typeof base.join==='function'){
+    lobbyBase=base;
+    try{lobbyRoom=await base.join('lz-lobby')}catch(e){lobbyRoom=null}
   }
+  if(lobbyRoom){$('hostb').disabled=false;lobbyTick();setInterval(lobbyTick,1000)}
+  else{lobbyMsg='Online games are not available right now. You can still play solo.';$('lglist').textContent=''}
   netLabel();setInterval(netLabel,1000);
 })();
 })();
