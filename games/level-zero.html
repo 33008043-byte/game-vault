@@ -308,6 +308,10 @@ ul.how{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap
 ul.how li::before{content:"> ";color:var(--wallpaper)}
 kbd{font:inherit;border:1px solid var(--dim);padding:0 5px}
 #net{color:var(--dim)}
+#specbar{position:fixed;left:50%;top:58px;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;background:rgba(0,0,0,.6);border:1px solid var(--dim);padding:8px 12px;z-index:30;pointer-events:auto;color:var(--tape);letter-spacing:2px}
+#specbar[hidden]{display:none}
+#specbar button{font-size:22px;padding:2px 14px}
+#spechelp{width:100%;text-align:center;font-size:14px}
 #menu{overflow-y:auto}
 #lobby{border:1px solid var(--dim);padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:rgba(0,0,0,.35)}
 #lobby .lbt{color:var(--wallpaper);letter-spacing:2px}
@@ -370,6 +374,7 @@ kbd{font:inherit;border:1px solid var(--dim);padding:0 5px}
 <button id="blkb" class="ghost" type="button">BLINK</button>
 <div id="cam"><span>NIGHT VISION ON</span></div>
 <div id="toast"></div>
+<div id="specbar" hidden><button id="specprev" class="ghost" type="button" aria-label="Watch previous player">◀</button><span id="specname"></span><button id="specnext" class="ghost" type="button" aria-label="Watch next player">▶</button><div class="dim" id="spechelp">Click or ← → to switch player</div></div>
 <div id="hint"></div>
 <div id="joy"><i></i></div>
 
@@ -3124,7 +3129,24 @@ function simEntity(e,kind,dt,now){
 }
 
 /* ---------- per-frame game update ---------- */
-var hudT=0,prevGot=0,specName='';
+var hudT=0,prevGot=0,specName='',specPeer=null,specStep=0,specShown='';
+function specBar(name,i,n){
+  var el=$('specbar');if(!el)return;
+  var key=name?name+'|'+i+'|'+n:'';if(key===specShown)return;specShown=key;
+  if(!name){el.hidden=true;return}
+  el.hidden=false;$('specname').textContent='WATCHING '+name+(n>1?'  ('+i+'/'+n+')':'');
+  $('specprev').hidden=$('specnext').hidden=n<2;
+}
+function specCycle(d){if(me.s!==0)specStep=d}
+window.addEventListener('keydown',function(e){
+  if(state!=='play'||me.s===0)return;
+  if(e.code==='ArrowRight'||e.code==='KeyE'||e.code==='Space'){specCycle(1);e.preventDefault()}
+  else if(e.code==='ArrowLeft'||e.code==='KeyQ'){specCycle(-1);e.preventDefault()}
+});
+$('specprev').addEventListener('click',function(e){e.stopPropagation();specCycle(-1)});
+$('specnext').addEventListener('click',function(e){e.stopPropagation();specCycle(1)});
+// while the mouse is captured by the game, any click watches the next player
+document.addEventListener('mousedown',function(e){if(state!=='play'||me.s===0||!document.pointerLockElement)return;specCycle(e.button===2?-1:1)});
 function update(dt,now){
   var maxR=readPeers(dt);
   if(state!=='play')return;
@@ -3592,9 +3614,15 @@ function frame(now){
       if(onCam){var CC=CAMS[camSel];cx=CC.x;cy=CC.y;ca=CC.a+Math.sin(now/2600)*0.25;curZ=0.88;camP=0.3;staticAmt=Math.max(staticAmt,0.18);flick=256;
         if(level.bots)level.bots.forEach(function(q){if(q.jt&&now-q.jt<650&&Math.hypot(q.x-CC.x,q.y-CC.y)<12)staticAmt=0.95});}
       if(me.s!==0&&(me.s===2||now-deathAt>1300)){
-        var tgt=null;if(ltype!==4)inRound().forEach(function(o){if(!tgt&&o.s===0)tgt=o});
+        var alive=ltype!==4?inRound().filter(function(o){return o.s===0}).sort(function(a,b){return a.peer<b.peer?-1:1}):[];
+        var si=-1;for(var sj=0;sj<alive.length;sj++)if(alive[sj].peer===specPeer)si=sj;
+        if(si<0&&alive.length){si=0;specPeer=alive[0].peer}
+        if(specStep&&alive.length){si=(si+specStep+alive.length)%alive.length;specPeer=alive[si].peer}
+        specStep=0;
+        var tgt=si>=0?alive[si]:null;
         if(tgt){cx=tgt.x;cy=tgt.y;ca=tgt.a;specName=tgt.name;curZ=0.5}else me.a+=dt*0.15;
-      }
+        specBar(tgt?tgt.name:'',si+1,alive.length);
+      }else specBar('',0,0);
       if(shake>0.01&&!onCam){curZ=Math.max(0.1,curZ+(Math.random()-.5)*0.1*shake);ca+=(Math.random()-.5)*0.06*shake}
       if(onCam&&CAMS[camSel].audio){ctx.fillStyle='#050805';ctx.fillRect(0,0,W,H);for(var sn=0;sn<220;sn++){var gv=(Math.random()*120)|0;ctx.fillStyle='rgb('+gv+','+gv+','+gv+')';ctx.fillRect((Math.random()*W)|0,(Math.random()*H)|0,2,1)}
         if(level.bots&&level.bots.some(function(q){return q.node==='KITCHEN'})&&Math.random()<0.05)blip('bang',0.3+Math.random()*0.3)}
