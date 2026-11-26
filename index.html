@@ -180,8 +180,8 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-bet
 <section class="band add" id="add-game"><div class="wrap">
   <div>
     <h2>Add a game</h2>
-    <p>Pick the .html file of a game you've made (or paste a link), give it a name and a cartridge colour, and it goes on the shelf.</p>
-    <p class="note">Games you add here are saved in this browser only. To put a game on the shelf for everyone, add its file to the games folder and upload the site again.</p>
+    <p>Pick the .html file of a game you've made (or paste a link), give it a name and a cartridge colour, and it goes on the shelf. Press <b>Add for everyone</b> so every player sees it.</p>
+    <p class="note">“Add for everyone” needs your update key and shows the game to all players in a minute or two. “Only in this browser” keeps it just for you.</p>
   </div>
   <div>
   <form id="lock" class="lock" novalidate>
@@ -196,7 +196,9 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-bet
     <label class="full">Link to the game<input id="fu" type="url" placeholder="https://..."></label>
     <label class="full">Short description<input id="fd" maxlength="120" placeholder="What's the game about?"></label>
     <div class="full"><span style="font-size:14px;font-weight:500">Cartridge colour</span><div class="sw" id="sw" style="margin-top:6px"></div></div>
-    <div class="full row" style="align-items:center"><button class="btn play" type="submit">Add to shelf</button><span class="msg" id="msg" role="status"></span><button class="del" type="button" id="relock" style="margin-left:auto">Lock</button></div>
+    <label class="full" id="fkeyl">Update key (to add for everyone)<input id="fkey" type="password" autocomplete="off" placeholder="Paste your update key (starts with github_pat_)"></label>
+    <div class="full row" style="align-items:center"><button class="btn play" type="submit" data-mode="pub">🌍 Add for everyone</button><button class="btn ghost" type="submit" data-mode="me">Only in this browser</button><button class="del" type="button" id="relock" style="margin-left:auto">Lock</button></div>
+    <div class="full msg" id="msg" role="status"></div>
   </form>
   </div>
 </div></section>
@@ -262,20 +264,43 @@ const GHK='gv-gh-key';
 const getKey=()=>{try{return localStorage.getItem(GHK)||''}catch(e){return''}};
 const setKey=k=>{try{k?localStorage.setItem(GHK,k):localStorage.removeItem(GHK)}catch(e){}};
 const b64=s=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=()=>rej(r.error);r.readAsDataURL(new Blob([s]))});
+const ghHd=()=>({Authorization:'Bearer '+getKey(),Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'});
+const ghApi=path=>{const R=ghRepo();return `https://api.github.com/repos/${R.owner}/${R.repo}/contents/${path}`};
+async function ghGet(path){
+  const r=await fetch(ghApi(path)+'?ref='+encodeURIComponent(ghRepo().branch)+'&t='+Date.now(),{headers:ghHd(),cache:'no-store'});
+  if(r.status===401)throw new Error('KEY');
+  if(r.status===404)return null;
+  if(!r.ok)throw new Error('HTTP'+r.status);
+  const j=await r.json();let text='';
+  if(j.content){const bin=atob(j.content.replace(/\s/g,''));text=new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
+  return{sha:j.sha,text};
+}
+async function ghPut(path,text,sha,msg){
+  const body={message:msg,content:await b64(text),branch:ghRepo().branch};if(sha)body.sha=sha;
+  const r=await fetch(ghApi(path),{method:'PUT',headers:{...ghHd(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.status===401)throw new Error('KEY');
+  if(r.status===403||r.status===404)throw new Error('NOACCESS');
+  if(r.status===409)throw new Error('BUSY');
+  if(!r.ok)throw new Error('HTTP'+r.status);
+}
+/* Change the shared game list (games.json) in the repository. fn gets the current list and returns the new one. */
+async function ghEditList(fn,msg){
+  for(let i=0;i<3;i++){
+    const cur=await ghGet('games.json');
+    let list=[];try{list=cur&&cur.text?JSON.parse(cur.text):[]}catch(e){list=[]}
+    if(!Array.isArray(list))list=[];
+    const next=fn(list);
+    try{await ghPut('games.json',JSON.stringify(next,null,2)+'\n',cur&&cur.sha,msg);return next}
+    catch(e){if(String(e.message)!=='BUSY'&&String(e.message)!=='HTTP422')throw e}
+  }
+  throw new Error('BUSY');
+}
+const pubErr=err=>{const m=String(err&&err.message);
+  if(m==='KEY'){setKey('');return 'That update key did not work. Check it and paste it again.'}
+  if(m==='NOACCESS')return 'The key works but cannot change this site. Make sure it was made for game-vault with Contents set to Read and write.';
+  return 'Could not publish ('+m+'). Check your internet and try again.'};
 async function ghPublish(path,html,msg){
-  const R=ghRepo(),key=getKey();
-  const api=`https://api.github.com/repos/${R.owner}/${R.repo}/contents/${path}`;
-  const hd={Authorization:'Bearer '+key,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
-  let sha;
-  const cur=await fetch(api+'?ref='+encodeURIComponent(R.branch),{headers:hd,cache:'no-store'});
-  if(cur.status===401)throw new Error('KEY');
-  if(cur.ok)sha=(await cur.json()).sha;
-  else if(cur.status!==404)throw new Error('HTTP'+cur.status);
-  const body={message:msg,content:await b64(html),branch:R.branch};if(sha)body.sha=sha;
-  const put=await fetch(api,{method:'PUT',headers:{...hd,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(put.status===401)throw new Error('KEY');
-  if(put.status===403||put.status===404)throw new Error('NOACCESS');
-  if(!put.ok)throw new Error('HTTP'+put.status);
+  const cur=await ghGet(path);await ghPut(path,html,cur&&cur.sha,msg);
 }
 /* A browser copy kept after publishing lets the publisher see the new version right away while the site
    refreshes. It removes itself after 15 minutes so this browser goes back to the shared version. */
@@ -310,7 +335,16 @@ const label=(g)=>{
   return `<svg viewBox="0 0 240 150" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="240" height="150" fill="${c}"/><g opacity=".18" fill="#fff">${[0,1,2,3,4,5].map(i=>`<rect x="${i*44-10}" y="0" width="18" height="150" transform="skewX(-20)"/>`).join('')}</g><rect x="70" y="30" width="100" height="90" rx="10" fill="#1f0f0d" opacity=".85"/><text x="120" y="88" text-anchor="middle" font-family="Silkscreen,monospace" font-weight="700" font-size="36" fill="#fff">${ini}</text></svg>`;
 };
 
-const all=()=>[...BUILT,...mine];
+let shared=[];
+const all=()=>{const ids=new Set(BUILT.map(g=>g.id));return[...BUILT,...shared.filter(g=>g&&g.id&&!ids.has(g.id)&&(ids.add(g.id),true)),...mine]};
+/* Games added "for everyone" live in games.json next to this page. */
+fetch('games.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():[]).then(list=>{
+  if(!Array.isArray(list))return;
+  shared=list.filter(g=>g&&typeof g.id==='string'&&typeof g.name==='string').map(g=>({
+    id:g.id,name:String(g.name).slice(0,40),genre:String(g.genre||'Other'),desc:String(g.desc||''),col:String(g.col||COLS[1]),
+    url:String(g.url||''),built:!g.link&&/^games\/[a-z0-9-]+\.html$/.test(g.url||''),shared:true}));
+  renderChips();render();
+}).catch(()=>{});
 function renderChips(){
   const gs=['All',...new Set(all().map(g=>g.genre))];
   if(!gs.includes(genre))genre='All';
@@ -323,9 +357,9 @@ function render(){
     <div class="lab">${label(g)}</div>
     <div class="body">
       <h3>${esc(g.name)}</h3>
-      <div class="meta"><span>${esc(g.genre)}</span>${g.players?`<span>${esc(g.players)}</span>`:''}<span>${g.built?'Plays here':'Added by you'}</span>${up&&g.built?`<span class="upd" title="${esc(up.name)}">${up.pub?'Published':'Updated here'} ${esc(new Date(up.at).toLocaleDateString())}</span>`:''}</div>
+      <div class="meta"><span>${esc(g.genre)}</span>${g.players?`<span>${esc(g.players)}</span>`:''}<span>${g.shared?'Added by the family':g.built?'Plays here':'Only in this browser'}</span>${up&&g.built?`<span class="upd" title="${esc(up.name)}">${up.pub?'Published':'Updated here'} ${esc(new Date(up.at).toLocaleDateString())}</span>`:''}</div>
       <p>${esc(g.desc||'No description yet.')}</p>
-      <div class="row">${u?((g.built||g.file)?`<a class="btn play" href="${esc(u)}" data-play="${esc(g.id)}">▶ Play</a>`:`<a class="btn play" href="${esc(u)}" target="_blank" rel="noopener">▶ Play ↗</a>`):'<span class="meta">Link missing</span>'}${(g.built||g.file)?`<button class="btn ghost" type="button" data-up="${esc(g.id)}">⟳ Update</button>`:''}${up&&g.built&&!up.pub?`<button class="del" type="button" data-undo="${esc(g.id)}">Undo</button>`:''}${up?`<button class="del" type="button" data-dl="${esc(g.id)}">Download</button>`:''}${g.built||!unlocked?'':`<button class="del" type="button" data-del="${esc(g.id)}">Remove</button>`}</div>
+      <div class="row">${u?((g.built||g.file)?`<a class="btn play" href="${esc(u)}" data-play="${esc(g.id)}">▶ Play</a>`:`<a class="btn play" href="${esc(u)}" target="_blank" rel="noopener">▶ Play ↗</a>`):'<span class="meta">Link missing</span>'}${(g.built||g.file)?`<button class="btn ghost" type="button" data-up="${esc(g.id)}">⟳ Update</button>`:''}${up&&g.built&&!up.pub?`<button class="del" type="button" data-undo="${esc(g.id)}">Undo</button>`:''}${up?`<button class="del" type="button" data-dl="${esc(g.id)}">Download</button>`:''}${g.shared&&unlocked?`<button class="del" type="button" data-delpub="${esc(g.id)}">Remove for everyone</button>`:''}${g.built||g.shared||!unlocked?'':`<button class="del" type="button" data-del="${esc(g.id)}">Remove</button>`}</div>
     </div></article>`}).join('');
   const slot=(!t&&genre==='All')?`<button class="empty" type="button" id="slot"><span><b>Empty slot</b>Add your next game</span></button>`:'';
   grid.innerHTML=cards+slot;
@@ -405,6 +439,13 @@ grid.addEventListener('click',async e=>{
   if(dl){const id=dl.dataset.dl;let html;try{html=await fget(id)}catch(err){}
     if(!html){toast('Could not find the updated file.');return}
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=(ups[id]&&ups[id].name)||'game.html';document.body.appendChild(a);a.click();a.remove();return}
+  const dp=e.target.closest('[data-delpub]');
+  if(dp){const id=dp.dataset.delpub,g=all().find(x=>x.id===id);
+    if(!getKey()){toast('Paste your update key in the Add a game form first.');return}
+    if(!confirm('Remove '+(g?g.name:'this game')+' for everyone?'))return;
+    try{await ghEditList(l=>l.filter(x=>x.id!==id),'Remove '+(g?g.name:id)+' from Game Vault');shared=shared.filter(x=>x.id!==id);renderChips();render();toast((g?g.name:'Game')+' is removed for everyone.')}
+    catch(err){toast(pubErr(err))}
+    return}
   const d=e.target.closest('[data-del]');
   if(d){const id=d.dataset.del;mine=mine.filter(g=>g.id!==id);save();if(ups[id]){delete ups[id];saveUps()}try{await fdel(id)}catch(err){}renderChips();render();return}
   if(e.target.closest('#slot')){document.getElementById('add-game').scrollIntoView({behavior:'smooth'});setTimeout(()=>document.getElementById('fn').focus(),400)}
@@ -425,25 +466,51 @@ lockF.addEventListener('submit',async e=>{
 document.getElementById('relock').addEventListener('click',()=>{unlocked=false;try{sessionStorage.removeItem(UKEY)}catch(err){}showLock();render()});
 showLock();
 const msg=document.getElementById('msg');
+const fkeyl=document.getElementById('fkeyl'),fkey=document.getElementById('fkey');
+const showKeyField=()=>{fkeyl.hidden=!!getKey()};showKeyField();
+const slugify=s=>(s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40))||'game';
 document.getElementById('f').addEventListener('submit',async e=>{
   e.preventDefault();
   if(!unlocked){showLock();return}
+  const mode=(e.submitter&&e.submitter.dataset.mode)||'pub';
   const name=document.getElementById('fn').value.trim(),url=safeUrl(document.getElementById('fu').value.trim()),file=document.getElementById('ff').files[0];
+  const genreV=document.getElementById('fg').value,desc=document.getElementById('fd').value.trim();
   if(!name){msg.textContent='Give your game a name.';return}
-  const id='g'+Date.now();
+  let html=null;
   if(file){
-    let html;try{html=await file.text()}catch(err){msg.textContent='Could not read that file.';return}
+    try{html=await file.text()}catch(err){msg.textContent='Could not read that file.';return}
     if(!looksLikeGame(html)){msg.textContent='That does not look like a game file.';return}
-    try{await fput(id,html)}catch(err){msg.textContent='Could not save the file in this browser.';return}
-    ups[id]={name:file.name,at:Date.now()};saveUps();
-    mine.push({id,name,genre:document.getElementById('fg').value,file:true,url:'',desc:document.getElementById('fd').value.trim(),col});
-  }else{
-    if(!url){msg.textContent='Pick a game file, or paste a full link starting with https://';return}
-    mine.push({id,name,genre:document.getElementById('fg').value,url,desc:document.getElementById('fd').value.trim(),col});
+  }else if(!url){msg.textContent='Pick a game file, or paste a full link starting with https://';return}
+  const done=()=>{e.target.reset();showKeyField();genre='All';q.value='';renderChips();render();document.getElementById('games').scrollIntoView({behavior:'smooth'})};
+  if(mode==='me'){
+    const id='g'+Date.now();
+    if(html){try{await fput(id,html)}catch(err){msg.textContent='Could not save the file in this browser.';return}
+      ups[id]={name:file.name,at:Date.now()};saveUps();
+      mine.push({id,name,genre:genreV,file:true,url:'',desc,col});}
+    else mine.push({id,name,genre:genreV,url,desc,col});
+    save();done();msg.textContent=name+' is on your shelf (only in this browser).';return;
   }
-  save();e.target.reset();genre='All';q.value='';renderChips();render();
-  msg.textContent=name+' is on the shelf!';
-  document.getElementById('games').scrollIntoView({behavior:'smooth'});
+  if(!ghRepo()){msg.textContent='Adding for everyone only works on the online site.';return}
+  const typed=fkey.value.trim();if(typed)setKey(typed);
+  if(!getKey()){msg.textContent='Paste your update key first.';fkey.focus();return}
+  const btns=[...e.target.querySelectorAll('button[type=submit]')];btns.forEach(b=>b.disabled=true);
+  msg.textContent='Adding '+name+' for everyone…';
+  try{
+    const id='s'+Date.now();
+    let entry={id,name,genre:genreV,desc,col};
+    if(html){
+      const taken=new Set(all().map(g=>g.url));
+      let base=slugify(name),path='games/'+base+'.html',n=2;
+      while(taken.has(path)||await ghGet(path)){path='games/'+base+'-'+n+'.html';n++}
+      await ghPut(path,html,null,'Add '+name+' to Game Vault');
+      entry.url=path;
+      try{await fput(id,html);ups[id]={name:file.name,at:Date.now(),pub:true};saveUps()}catch(err){}
+    }else{entry.url=url;entry.link=true}
+    await ghEditList(l=>[...l.filter(x=>x.id!==id),entry],'Add '+name+' to the Game Vault shelf');
+    shared.push({...entry,built:!entry.link,shared:true});
+    done();msg.textContent=name+' is on the shelf for everyone! Other players see it in a minute or two.';
+  }catch(err){msg.textContent=pubErr(err);showKeyField()}
+  finally{btns.forEach(b=>b.disabled=false)}
 });
 renderChips();render();
 }
