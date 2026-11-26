@@ -249,7 +249,7 @@ const openHtml=html=>{const u=URL.createObjectURL(new Blob([html],{type:'text/ht
 /* ===== Update for everyone: the site lives in a GitHub repository; publishing replaces the game file there.
    On GitHub Pages (name.github.io/repo) this is found automatically. If the site is hosted somewhere else
    from a GitHub repository (for example Netlify linked to GitHub), fill in owner and repo here. */
-const GH_CFG={owner:'',repo:'',branch:'main'};
+const GH_CFG={owner:'33008043-byte',repo:'game-vault',branch:'main'};
 const ghRepo=()=>{
   if(GH_CFG.owner&&GH_CFG.repo)return GH_CFG;
   const m=location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
@@ -386,7 +386,7 @@ pubAll.addEventListener('click',async()=>{
     await ghPublish(g.url,html,'Update '+g.name+' from Game Vault');
     try{await saveLocal(id,name,true)}catch(err){}
     dlg.close();pending=null;
-    toast(g.name+' is updated for everyone! Other players get it within about 10 minutes.');
+    toast(g.name+' is updated for everyone! Other players get it in a minute or two.');
   }catch(err){
     const m=String(err&&err.message);
     if(m==='KEY'){setKey('');dmsg.textContent='That update key did not work. Check it and paste it again.'}
