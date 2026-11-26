@@ -58,7 +58,7 @@ UPDATING A GAME
 ONLINE PLAY
   Level Zero co-op and Gambit Arena online matches work on your site now.
   They connect players using PeerJS (free, no account needed).
-  Level Zero: press HOST ONLINE GAME, or JOIN an open game from the list (max 4 players).
+  Level Zero: press HOST GAME and share the 5-letter code; friends type it and press JOIN (max 4 players).
   Gambit Arena: one player creates a match and shares the code.
   Some school or office wifi blocks player-to-player connections.
   If friends can't see each other, try a home wifi or phone hotspot.

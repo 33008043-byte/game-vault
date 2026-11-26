@@ -322,6 +322,7 @@ kbd{font:inherit;border:1px solid var(--dim);padding:0 5px}
 #lobby .lbt{color:var(--wallpaper);letter-spacing:2px}
 #lobby button{font-size:20px;padding:4px 14px}
 #lobby button[disabled]{opacity:.45;cursor:default}
+#jcode{font:inherit;font-size:22px;width:7.5em;text-transform:uppercase;letter-spacing:4px;color:var(--tape);background:rgba(0,0,0,.5);border:1px solid var(--dim);padding:4px 8px;border-radius:0}
 #lglist{display:flex;flex-direction:column;gap:6px;max-height:210px;overflow-y:auto}
 #lglist .g{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px dashed var(--dim);padding-top:6px}
 #lglist .g span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tape)}
@@ -408,8 +409,10 @@ kbd{font:inherit;border:1px solid var(--dim);padding:0 5px}
       <span id="net">Checking for online games...</span>
     </div>
     <div id="lobby">
-      <div class="row" style="justify-content:space-between"><span class="lbt">ONLINE GAMES <span class="dim">(MAX 4 PLAYERS)</span></span><button id="hostb" type="button" disabled>HOST ONLINE GAME</button></div>
-      <div id="lglist"><div class="dim">Looking for open games...</div></div>
+      <span class="lbt">PLAY ONLINE WITH FRIENDS <span class="dim">(MAX 4 PLAYERS)</span></span>
+      <div class="row"><button id="hostb" type="button" disabled>HOST GAME</button><span class="dim">and share the code</span></div>
+      <div class="row"><input id="jcode" type="text" maxlength="5" autocomplete="off" spellcheck="false" placeholder="CODE" aria-label="Game code"><button id="joinb" type="button" disabled>JOIN</button></div>
+      <div id="lglist" class="dim"></div>
     </div>
     <div class="row">
       <button id="shopb" type="button">SHOP</button>
@@ -3437,7 +3440,7 @@ function drawHud(now,de){
     d.appendChild(b);var sp=document.createElement('span');sp.textContent=s===0?'  ALIVE':s===1?'  LOST':'  OUT';sp.className=s===0?'dim':s===1?'bad':'ok';d.appendChild(sp);box.appendChild(d)}
   line(me.name,me.s,COLORS[me.ci%COLORS.length],true);
   var all=inRound();all.slice(0,7).forEach(function(o){line(o.name,o.s,COLORS[o.ci%COLORS.length],false)});
-  $('netline').textContent=room?(all.length?(all.length+1)+' IN THE LEVEL':'ONLINE, ALONE FOR NOW'):'SOLO';
+  $('netline').textContent=room?((myGame?'CODE '+myGame.id.toUpperCase()+'  ':'')+(all.length?(all.length+1)+' IN THE LEVEL':'WAITING FOR FRIENDS')):'SOLO';
   if(all.length>lastCount)toast('SOMEONE ELSE IS DOWN HERE');
   lastCount=all.length;
   var hint='';
@@ -3668,85 +3671,58 @@ $('go').addEventListener('click',function(){enter(+$('startLevel').value||0)});
 nick.addEventListener('keydown',function(e){if(e.key==='Enter')enter(+$('startLevel').value||0)});
 
 
-var lobbyBase=null,lobbyRoom=null,myGame=null,lobbyMsg='',joining=false;
-var MAXP=4,LVNAMES=['Level 0','Blackout','Poolrooms','Party Room','Level !','Facility','Happy Home','The Mall','Flooding Basement','Mirror Halls','The Night Shift','The Elevator'];
+var lobbyBase=null,myGame=null,lobbyMsg='',joining=false;
+var MAXP=4;
 function netLabel(){
   var el=$('net');if(state!=='menu')return;
-  el.textContent=lobbyMsg||(lobbyRoom?'Host a game, join one below, or play solo.':'Checking for online games...');
+  el.textContent=lobbyMsg||(lobbyBase?'Host a game and share the code, type a friend\'s code to join, or play solo.':'Checking for online play...');
 }
-function gameCount(){var n=0;if(!room)return 0;try{room.peers().forEach(function(p){if(p&&(p.sameTab||(p.presence&&typeof p.presence.r==='number')))n++})}catch(e){}return n}
-function lobbyTick(){
-  if(!lobbyRoom)return;
-  var mine=myGame?{g:myGame.id,gn:myGame.gn,n:Math.max(1,gameCount()),lv:ltype|0}:{g:null};
-  try{var pr=lobbyRoom.presence(mine);if(pr&&pr.catch)pr.catch(function(){})}catch(e){}
-  if(state!=='menu')return;
-  var st=null;try{st=lobbyRoom.status?lobbyRoom.status():null}catch(e){}
-  if(st&&st.state!=='online'){
-    var bx=$('lglist');bx.textContent='';var dv=document.createElement('div');dv.className='dim';
-    dv.textContent=st.state==='connecting'?'Connecting to the online server...':"Can't connect to other players right now ("+(st.error||'no answer')+"). Your wifi may be blocking online games. Try again in a minute, or try another wifi or a phone hotspot.";
-    bx.appendChild(dv);return}
-  var games={},list=[];
-  try{list=lobbyRoom.peers()}catch(e){list=[]}
-  list.forEach(function(p){
-    if(!p||p.sameTab)return;var q=p.presence||{};
-    if(typeof q.g!=='string'||!/^[a-z0-9]{4,8}$/.test(q.g))return;
-    var g=games[q.g]||(games[q.g]={id:q.g,gn:'',n:0,lv:0});
-    g.n=Math.max(g.n,num(q.n,1,99,1)|0);g.lv=num(q.lv,0,11,0)|0;if(!g.gn&&typeof q.gn==='string')g.gn=cleanName(q.gn.replace(/'S GAME$/,''))+"'S GAME";
-  });
-  var box=$('lglist'),ids=Object.keys(games);
-  ids.sort(function(a,b){return (games[a].n>=MAXP)-(games[b].n>=MAXP)||games[b].n-games[a].n});
-  box.textContent='';
-  if(!ids.length){var d=document.createElement('div');d.className='dim';d.textContent='No open games right now. Host one and your friends will see it here.';box.appendChild(d);return}
-  ids.forEach(function(id){
-    var g=games[id],row=document.createElement('div');row.className='g';
-    var t=document.createElement('span');t.textContent=(g.gn||'A GAME')+'  ·  '+(LVNAMES[g.lv]||'Level 0')+'  ·  '+Math.min(g.n,MAXP)+'/'+MAXP;
-    var b=document.createElement('button');b.type='button';
-    if(g.n>=MAXP){b.textContent='FULL';b.disabled=true}
-    else{b.textContent='JOIN';b.disabled=joining;b.addEventListener('click',function(){joinGame(g.id,g.gn)})}
-    row.appendChild(t);row.appendChild(b);box.appendChild(row);
-  });
-}
+function setBusy(b){joining=b;$('hostb').disabled=b||!lobbyBase;$('joinb').disabled=b||!lobbyBase}
+function statusWhy(r){var st=null;try{st=r&&r.status?r.status():null}catch(e){}return st&&st.state!=='online'?(st.error||st.state):''}
 function newCode(){var c='',a='abcdefghjkmnpqrstuvwxyz23456789';for(var i=0;i<5;i++)c+=a[(Math.random()*a.length)|0];return c}
 async function hostGame(){
-  if(!lobbyBase||joining)return;joining=true;$('hostb').disabled=true;lobbyMsg='Starting your game...';netLabel();
+  if(!lobbyBase||joining)return;setBusy(true);lobbyMsg='Starting your game...';netLabel();
   var id=newCode(),r=null;
   try{r=await lobbyBase.join('lz-game-'+id)}catch(e){r=null}
-  joining=false;$('hostb').disabled=false;
+  setBusy(false);
   if(!r){lobbyMsg='Could not start an online game. Try again or play solo.';netLabel();return}
-  room=r;myGame={id:id,gn:cleanName(nick.value.trim())+"'S GAME"};lobbyMsg='';
+  room=r;myGame={id:id};lobbyMsg='';
   try{room.onPeers(function(){},function(){})}catch(e){}
-  enter(+$('startLevel').value||0);sendPresence(true);lobbyTick();
+  enter(+$('startLevel').value||0);sendPresence(true);
+  toast('YOUR CODE: '+id.toUpperCase()+'  -  FRIENDS TYPE IT TO JOIN');
 }
-async function joinGame(id,gn){
-  if(!lobbyBase||joining)return;joining=true;$('hostb').disabled=true;lobbyMsg='Joining '+(gn||'the game')+'...';netLabel();lobbyTick();
-  var r=null;try{r=await lobbyBase.join('lz-game-'+id)}catch(e){r=null}
+async function joinGame(){
+  var code=($('jcode').value||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(code.length!==5){lobbyMsg='Type the 5-letter code your friend sees.';netLabel();$('jcode').focus();return}
+  if(!lobbyBase||joining)return;setBusy(true);lobbyMsg='Joining game '+code.toUpperCase()+'...';netLabel();
+  var r=null;try{r=await lobbyBase.join('lz-game-'+code)}catch(e){r=null}
   var n=0;
   if(r){
     // wait until we can see the players already in that game
-    for(var i=0;i<20;i++){
-      await new Promise(function(res){setTimeout(res,200)});
+    for(var i=0;i<40;i++){
+      await new Promise(function(res){setTimeout(res,250)});
       n=0;try{r.peers().forEach(function(p){if(p&&!p.sameTab&&p.presence&&typeof p.presence.r==='number')n++})}catch(e){}
-      if(n>0&&i>=5)break;
+      if(n>0&&i>=6)break;
     }
   }
-  joining=false;$('hostb').disabled=false;
-  if(!r||n===0){if(r)try{r.leave()}catch(e){};lobbyMsg='That game has ended. Pick another one or host your own.';netLabel();lobbyTick();return}
-  if(n>=MAXP){try{r.leave()}catch(e){};lobbyMsg='That game is full (4 players). Pick another one or host your own.';netLabel();lobbyTick();return}
-  room=r;myGame={id:id,gn:gn||'A GAME'};lobbyMsg='';
+  setBusy(false);
+  if(!r||n===0){var why=statusWhy(r);if(r)try{r.leave()}catch(e){}
+    lobbyMsg=why?"Can't connect to other players right now ("+why+"). Your wifi may be blocking online games. Try another wifi or a phone hotspot.":'No game found with code '+code.toUpperCase()+'. Check the code, and make sure your friend is still in the game.';
+    netLabel();return}
+  if(n>=MAXP){try{r.leave()}catch(e){};lobbyMsg='That game is full (4 players).';netLabel();return}
+  room=r;myGame={id:code};lobbyMsg='';
   try{room.onPeers(function(){},function(){})}catch(e){}
-  readPeers(0);enter(0);sendPresence(true);lobbyTick();
+  readPeers(0);enter(0);sendPresence(true);
 }
 $('hostb').addEventListener('click',hostGame);
+$('joinb').addEventListener('click',joinGame);
+$('jcode').addEventListener('keydown',function(e){e.stopPropagation();if(e.key==='Enter')joinGame()});
 (async function connect(){
   for(var i=0;i<24&&!(window.claude&&window.claude.use);i++)await new Promise(function(r){setTimeout(r,250)});
   var base=null;
   try{if(window.claude&&window.claude.use)base=await window.claude.use('room')}catch(e){base=null}
-  if(base&&typeof base.join==='function'){
-    lobbyBase=base;
-    try{lobbyRoom=await base.join('lz-lobby')}catch(e){lobbyRoom=null}
-  }
-  if(lobbyRoom){$('hostb').disabled=false;lobbyTick();setInterval(lobbyTick,1000)}
-  else{lobbyMsg='Online games are not available right now. You can still play solo.';$('lglist').textContent=''}
+  if(base&&typeof base.join==='function'){lobbyBase=base;setBusy(false)}
+  else lobbyMsg='Online play is not available right now. You can still play solo.';
   netLabel();setInterval(netLabel,1000);
 })();
 })();
