@@ -6,5 +6,13 @@
     "desc": "",
     "col": "#9b8cff",
     "url": "games/neon-hop.html"
+  },
+  {
+    "id": "s1795716081479",
+    "name": "Find the Needle",
+    "genre": "Relaxing",
+    "desc": "Dig through a giant haystack to find the needle. Grab, throw and sort the hay, earn money and buy tools.",
+    "col": "#c9b04a",
+    "url": "games/find-the-needle.html"
   }
 ]
