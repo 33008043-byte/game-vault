@@ -247,6 +247,17 @@ const toastEl=()=>document.getElementById('toast');
 let toastT;
 const toast=s=>{const t=toastEl();t.textContent=s;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,4000)};
 const looksLikeGame=s=>/<(html|body|canvas|script)[\s>]/i.test(s.slice(0,200000));
+/* Games made on claude.ai use its online "room". Outside claude.ai, room-shim.js stands in for it (PeerJS).
+   Any game file that needs it gets it added automatically when it is updated or added here. */
+let shimSrc=null;
+async function withShim(html){
+  if(!/window\.claude/.test(html)||/GV-ROOM-SHIM/.test(html))return html;
+  try{if(shimSrc===null){const r=await fetch('room-shim.js',{cache:'no-store'});shimSrc=r.ok?await r.text():''}}catch(e){shimSrc=''}
+  if(!shimSrc)return html;
+  const tag='\n<script data-gv-room-shim>\n'+shimSrc.replace(/<\/script/gi,'<\\/script')+'<'+'/script>\n';
+  const m=html.match(/<head[^>]*>/i);
+  return m?html.slice(0,m.index+m[0].length)+tag+html.slice(m.index+m[0].length):tag+html;
+}
 const openHtml=html=>{const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));location.href=u};
 /* ===== Update for everyone: the site lives in a GitHub repository; publishing replaces the game file there.
    On GitHub Pages (name.github.io/repo) this is found automatically. If the site is hosted somewhere else
@@ -391,6 +402,7 @@ upfile.addEventListener('change',async()=>{
   const g=all().find(x=>x.id===id);
   let html;try{html=await f.text()}catch(err){toast('Could not read that file.');return}
   if(!looksLikeGame(html)){toast('That does not look like a game file. Pick the game\'s .html file.');return}
+  html=await withShim(html);
   pending={id,g,html,name:f.name};
   const canPub=!!(g&&g.built&&ghRepo());
   document.getElementById('updt').textContent='Update '+(g?g.name:'game');
@@ -480,6 +492,7 @@ document.getElementById('f').addEventListener('submit',async e=>{
   if(file){
     try{html=await file.text()}catch(err){msg.textContent='Could not read that file.';return}
     if(!looksLikeGame(html)){msg.textContent='That does not look like a game file.';return}
+    html=await withShim(html);
   }else if(!url){msg.textContent='Pick a game file, or paste a full link starting with https://';return}
   const done=()=>{e.target.reset();showKeyField();genre='All';q.value='';renderChips();render();document.getElementById('games').scrollIntoView({behavior:'smooth'})};
   if(mode==='me'){

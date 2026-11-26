@@ -55,6 +55,10 @@ UPDATING A GAME
 
   Lost the key or it expired? Do step 5 again and paste the new one.
 
-NOTE
-  Online co-op in Level Zero and online matches in Gambit Arena only work
-  on claude.ai. Everything else, including Quack Quest multiplayer, works anywhere.
+ONLINE PLAY
+  Level Zero co-op and Gambit Arena online matches work on your site now.
+  They connect players using PeerJS (free, no account needed).
+  Level Zero: everyone who opens the game joins the same level.
+  Gambit Arena: one player creates a match and shares the code.
+  Some school or office wifi blocks player-to-player connections.
+  If friends can't see each other, try a home wifi or phone hotspot.
