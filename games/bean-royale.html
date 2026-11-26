@@ -102,13 +102,6 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
 }
 
 </style>
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
-      }
-    }
-  </script>
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -186,9 +179,19 @@ canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: blo
     <div id="winner-sub" class="winner-sub"></div>
   </div>
 
+  <div id="err-box" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:99;background:#7a0019;color:#fff;font:13px/1.4 monospace;padding:10px 14px;border-radius:10px;white-space:pre-wrap;max-height:40vh;overflow:auto"></div>
+  <script>
+    (function () {
+      var box = document.getElementById('err-box');
+      function show(msg) { box.style.display = 'block'; box.textContent += (box.textContent ? '\n' : '') + 'Error: ' + msg; }
+      window.addEventListener('error', function (e) { show((e.message || 'unknown') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { show(e.reason && (e.reason.stack || e.reason.message) || String(e.reason)); });
+      setTimeout(function () { if (!window.__gameBooted) show('The game did not start. The 3D library may be blocked or offline — try reloading.'); }, 8000);
+    })();
+  </script>
   <script type="module">
 // js/main.js
-import * as THREE5 from "three";
+import * as THREE5 from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
 
 // shared/constants.js
 var TICK_RATE = 60;
@@ -809,11 +812,12 @@ var BotBrain = class {
     p.input.grab = false;
     if (dist < w.radius) {
       if (w.waitFor) {
-        const wp = builder.kinematicPos(w.waitFor);
+        const k = builder.kinematicById.get(w.waitFor);
+        const wp = kinematicPose(k.obj, ctx.t + 0.45).pos;
         const tolerance = w.within * (0.6 + this.skill * 0.6);
         if (Math.abs(wp[0] - pos.x) > tolerance) {
-          const k = Math.min(1, dist / w.radius);
-          this.dir = dist > 0.01 ? [dx / dist * k, dz / dist * k] : [0, 0];
+          const k2 = Math.min(1, dist / w.radius);
+          this.dir = dist > 0.01 ? [dx / dist * k2, dz / dist * k2] : [0, 0];
           return;
         }
       }
@@ -850,10 +854,24 @@ var BotBrain = class {
         for (const tl of tiles.values()) {
           if (tl.fallen || tl.triggeredAt !== null || Math.abs(tl.pos[1] - layerY) > 0.5) continue;
           const d2 = Math.hypot(tl.pos[0] - pos.x, tl.pos[2] - pos.z);
-          if (d2 > 1.2 && d2 < 7) cand.push(tl);
+          if (d2 > 1.5 && d2 < 3.4) cand.push(tl);
         }
-        this.wanderTile = cand.length ? cand[Math.floor(this.rng() * cand.length)] : null;
-        this.wanderTimer = 1 + this.rng() * 1.5;
+        if (!cand.length) {
+          let best = null, bestD = Infinity;
+          for (const tl of tiles.values()) {
+            if (tl.fallen || tl.triggeredAt !== null || Math.abs(tl.pos[1] - layerY) > 0.5) continue;
+            const d2 = Math.hypot(tl.pos[0] - pos.x, tl.pos[2] - pos.z);
+            if (d2 < bestD) {
+              bestD = d2;
+              best = tl;
+            }
+          }
+          if (best) cand.push(best);
+        }
+        cand.sort((a, b) => Math.hypot(a.pos[0], a.pos[2]) - Math.hypot(b.pos[0], b.pos[2]));
+        const pickFrom = cand.slice(0, Math.max(1, Math.ceil(cand.length * 0.6)));
+        this.wanderTile = pickFrom.length ? pickFrom[Math.floor(this.rng() * pickFrom.length)] : null;
+        this.wanderTimer = 0.8 + this.rng();
       }
     }
     const wt = this.wanderTile;
@@ -1882,12 +1900,12 @@ var LEVEL_FILES = {
         "id": "moverA",
         "type": "mover",
         "from": [
-          -6,
+          -4,
           0,
           41
         ],
         "to": [
-          6,
+          4,
           0,
           41
         ],
@@ -1896,18 +1914,18 @@ var LEVEL_FILES = {
           0.8,
           6
         ],
-        "period": 4
+        "period": 7
       },
       {
         "id": "moverB",
         "type": "mover",
         "from": [
-          6,
+          4,
           0,
           48
         ],
         "to": [
-          -6,
+          -4,
           0,
           48
         ],
@@ -1916,19 +1934,19 @@ var LEVEL_FILES = {
           0.8,
           6
         ],
-        "period": 4,
+        "period": 6.5,
         "color": "#118ab2"
       },
       {
         "id": "moverC",
         "type": "mover",
         "from": [
-          -6,
+          -4,
           0,
           55
         ],
         "to": [
-          6,
+          4,
           0,
           55
         ],
@@ -1937,7 +1955,7 @@ var LEVEL_FILES = {
           0.8,
           6
         ],
-        "period": 3.4
+        "period": 6
       },
       {
         "id": "pendDeck",
@@ -2354,7 +2372,7 @@ var LEVEL_FILES = {
     "spawn": {
       "center": [
         0,
-        11.5,
+        17.5,
         0
       ],
       "spread": [
@@ -2365,19 +2383,37 @@ var LEVEL_FILES = {
     },
     "objects": [
       {
-        "id": "upper",
+        "id": "top",
+        "type": "hexfloor",
+        "center": [
+          0,
+          16,
+          0
+        ],
+        "rings": 6,
+        "tileSize": 1.5,
+        "fallDelay": 1.4,
+        "colors": [
+          "#ff70a6",
+          "#ff9770",
+          "#ffd670"
+        ]
+      },
+      {
+        "id": "middle",
         "type": "hexfloor",
         "center": [
           0,
           10,
           0
         ],
-        "rings": 5,
+        "rings": 6,
         "tileSize": 1.5,
+        "fallDelay": 1.4,
         "colors": [
-          "#ff70a6",
-          "#ff9770",
-          "#ffd670"
+          "#9ef01a",
+          "#38b000",
+          "#ccff33"
         ]
       },
       {
@@ -2388,8 +2424,9 @@ var LEVEL_FILES = {
           4,
           0
         ],
-        "rings": 5,
+        "rings": 6,
         "tileSize": 1.5,
+        "fallDelay": 1.4,
         "colors": [
           "#70d6ff",
           "#4895ef",
@@ -2401,7 +2438,7 @@ var LEVEL_FILES = {
         "type": "sweeper",
         "pos": [
           0,
-          10.25,
+          16.25,
           0
         ],
         "length": 15,
@@ -2414,21 +2451,21 @@ var LEVEL_FILES = {
         "type": "spawner",
         "pos": [
           0,
-          24,
+          30,
           0
         ],
         "spread": [
           9,
           9
         ],
-        "interval": 0.9,
+        "interval": 1.1,
         "radius": [
           0.5,
           0.8
         ],
         "kind": "fruit",
         "lifetime": 8,
-        "startDelay": 8
+        "startDelay": 10
       }
     ]
   },
@@ -2891,12 +2928,646 @@ var LEVEL_FILES = {
   }
 };
 
-// js/LocalNetwork.js
-var RAPIER_URLS = [
-  "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/rapier.es.js",
-  "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.14.0/+esm",
-  "https://unpkg.com/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+// js/MiniPhysics.js
+var FIXED = 0;
+var DYNAMIC = 1;
+var KINEMATIC = 2;
+var qMul = (a, b) => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
 ];
+var qConj = (q) => [-q[0], -q[1], -q[2], q[3]];
+function qRot(q, x, y, z) {
+  const [qx, qy, qz, qw] = q;
+  const ix = qw * x + qy * z - qz * y, iy = qw * y + qz * x - qx * z;
+  const iz = qw * z + qx * y - qy * x, iw = -qx * x - qy * y - qz * z;
+  return [
+    ix * qw + iw * -qx + iy * -qz - iz * -qy,
+    iy * qw + iw * -qy + iz * -qx - ix * -qz,
+    iz * qw + iw * -qz + ix * -qy - iy * -qx
+  ];
+}
+function qNorm(q) {
+  const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+  return [q[0] / l, q[1] / l, q[2] / l, q[3] / l];
+}
+var toQ = (o) => [o.x, o.y, o.z, o.w];
+var isIdentity = (q) => Math.abs(q[3]) > 0.999999;
+var RigidBodyDesc = class _RigidBodyDesc {
+  constructor(type) {
+    this.type = type;
+    this.t = [0, 0, 0];
+    this.q = [0, 0, 0, 1];
+    this.v = [0, 0, 0];
+    this.w = [0, 0, 0];
+    this.lockRot = false;
+  }
+  static fixed() {
+    return new _RigidBodyDesc(FIXED);
+  }
+  static dynamic() {
+    return new _RigidBodyDesc(DYNAMIC);
+  }
+  static kinematicPositionBased() {
+    return new _RigidBodyDesc(KINEMATIC);
+  }
+  setTranslation(x, y, z) {
+    this.t = [x, y, z];
+    return this;
+  }
+  setRotation(q) {
+    this.q = qNorm(toQ(q));
+    return this;
+  }
+  setLinvel(x, y, z) {
+    this.v = [x, y, z];
+    return this;
+  }
+  setAngvel(w) {
+    this.w = [w.x, w.y, w.z];
+    return this;
+  }
+  lockRotations() {
+    this.lockRot = true;
+    return this;
+  }
+  setCcdEnabled() {
+    return this;
+  }
+  setCanSleep() {
+    return this;
+  }
+  setLinearDamping() {
+    return this;
+  }
+};
+var ColliderDesc = class _ColliderDesc {
+  constructor(shape, dims) {
+    this.shape = shape;
+    Object.assign(this, dims);
+    this.lt = [0, 0, 0];
+    this.lq = [0, 0, 0, 1];
+    this.friction = 0.5;
+    this.restitution = 0;
+    this.density = 1;
+    this.events = false;
+    this.minFriction = false;
+  }
+  static cuboid(hx, hy, hz) {
+    return new _ColliderDesc("cuboid", { hx, hy, hz });
+  }
+  static cylinder(hh, r) {
+    return new _ColliderDesc("cylinder", { hh, r });
+  }
+  static ball(r) {
+    return new _ColliderDesc("ball", { r });
+  }
+  static capsule(hh, r) {
+    return new _ColliderDesc("capsule", { hh, r });
+  }
+  setTranslation(x, y, z) {
+    this.lt = [x, y, z];
+    return this;
+  }
+  setRotation(q) {
+    this.lq = qNorm(toQ(q));
+    return this;
+  }
+  setFriction(f) {
+    this.friction = f;
+    return this;
+  }
+  setFrictionCombineRule(r) {
+    this.minFriction = r === 1;
+    return this;
+  }
+  setRestitution(e) {
+    this.restitution = e;
+    return this;
+  }
+  setDensity(d) {
+    this.density = d;
+    return this;
+  }
+  setActiveEvents(flags) {
+    this.events = !!flags;
+    return this;
+  }
+};
+var RigidBody = class {
+  constructor(world, d) {
+    this.world = world;
+    this.type = d.type;
+    this.t = d.t.slice();
+    this.q = d.q.slice();
+    this.v = d.v.slice();
+    this.w = d.w.slice();
+    this.lockRot = d.lockRot;
+    this.colliders = [];
+    this.nextT = null;
+    this.nextQ = null;
+    this.kv = [0, 0, 0];
+    this.kw = [0, 0, 0];
+    this.invMass = d.type === DYNAMIC ? 1 : 0;
+  }
+  translation() {
+    return { x: this.t[0], y: this.t[1], z: this.t[2] };
+  }
+  rotation() {
+    return { x: this.q[0], y: this.q[1], z: this.q[2], w: this.q[3] };
+  }
+  linvel() {
+    const v = this.type === KINEMATIC ? this.kv : this.v;
+    return { x: v[0], y: v[1], z: v[2] };
+  }
+  setLinvel(v) {
+    this.v = [v.x, v.y, v.z];
+  }
+  setAngvel(w) {
+    this.w = [w.x, w.y, w.z];
+  }
+  setTranslation(t) {
+    this.t = [t.x, t.y, t.z];
+  }
+  setRotation(q) {
+    this.q = qNorm(toQ(q));
+  }
+  setNextKinematicTranslation(t) {
+    this.nextT = [t.x, t.y, t.z];
+  }
+  setNextKinematicRotation(q) {
+    this.nextQ = qNorm(toQ(q));
+  }
+  /** Velocity of a world point attached to this body. */
+  pointVel(p) {
+    if (this.type === FIXED) return [0, 0, 0];
+    const v = this.type === KINEMATIC ? this.kv : this.v;
+    const w = this.type === KINEMATIC ? this.kw : [0, 0, 0];
+    const rx = p[0] - this.t[0], ry = p[1] - this.t[1], rz = p[2] - this.t[2];
+    return [v[0] + w[1] * rz - w[2] * ry, v[1] + w[2] * rx - w[0] * rz, v[2] + w[0] * ry - w[1] * rx];
+  }
+};
+var Collider = class {
+  constructor(handle, d, body) {
+    this.handle = handle;
+    this.body = body;
+    this.shape = d.shape;
+    this.hx = d.hx;
+    this.hy = d.hy;
+    this.hz = d.hz;
+    this.hh = d.hh;
+    this.r = d.r;
+    this.lt = d.lt;
+    this.lq = d.lq;
+    this.friction = d.minFriction ? 0 : d.friction;
+    this.restitution = d.restitution;
+    this.events = d.events;
+    this.enabled = true;
+    this.pos = [0, 0, 0];
+    this.rot = [0, 0, 0, 1];
+    this.aabb = [0, 0, 0, 0, 0, 0];
+    let vol = 1;
+    if (d.shape === "ball") vol = 4 / 3 * Math.PI * d.r ** 3;
+    if (d.shape === "capsule") vol = Math.PI * d.r * d.r * (2 * d.hh + 4 / 3 * d.r);
+    if (d.shape === "cuboid") vol = 8 * d.hx * d.hy * d.hz;
+    if (d.shape === "cylinder") vol = Math.PI * d.r * d.r * 2 * d.hh;
+    this.mass = Math.max(0.05, vol * d.density);
+    this.update();
+  }
+  setEnabled(e) {
+    this.enabled = !!e;
+  }
+  isEnabled() {
+    return this.enabled;
+  }
+  update() {
+    const b = this.body;
+    const o = qRot(b.q, this.lt[0], this.lt[1], this.lt[2]);
+    this.pos = [b.t[0] + o[0], b.t[1] + o[1], b.t[2] + o[2]];
+    this.rot = isIdentity(this.lq) ? b.q : qMul(b.q, this.lq);
+    let ex, ey, ez;
+    if (this.shape === "ball") {
+      ex = ey = ez = this.r;
+    } else if (this.shape === "capsule") {
+      ex = ez = this.r;
+      ey = this.hh + this.r;
+    } else {
+      const hx = this.shape === "cuboid" ? this.hx : this.r;
+      const hy = this.shape === "cuboid" ? this.hy : this.hh;
+      const hz = this.shape === "cuboid" ? this.hz : this.r;
+      if (isIdentity(this.rot)) {
+        ex = hx;
+        ey = hy;
+        ez = hz;
+      } else {
+        const ax = qRot(this.rot, hx, 0, 0), ay = qRot(this.rot, 0, hy, 0), az = qRot(this.rot, 0, 0, hz);
+        ex = Math.abs(ax[0]) + Math.abs(ay[0]) + Math.abs(az[0]);
+        ey = Math.abs(ax[1]) + Math.abs(ay[1]) + Math.abs(az[1]);
+        ez = Math.abs(ax[2]) + Math.abs(ay[2]) + Math.abs(az[2]);
+      }
+    }
+    const p = this.pos;
+    this.aabb = [p[0] - ex, p[1] - ey, p[2] - ez, p[0] + ex, p[1] + ey, p[2] + ez];
+  }
+  /** Sphere centres used for narrow phase of dynamic shapes. */
+  spheres() {
+    if (this.shape === "ball") return [[this.pos[0], this.pos[1], this.pos[2], this.r]];
+    if (this.shape === "capsule") {
+      const [x, y, z] = this.pos;
+      return [[x, y - this.hh, z, this.r], [x, y, z, this.r], [x, y + this.hh, z, this.r]];
+    }
+    return [];
+  }
+  toLocal(p) {
+    const d = [p[0] - this.pos[0], p[1] - this.pos[1], p[2] - this.pos[2]];
+    return isIdentity(this.rot) ? d : qRot(qConj(this.rot), d[0], d[1], d[2]);
+  }
+  toWorldDir(v) {
+    return isIdentity(this.rot) ? v : qRot(this.rot, v[0], v[1], v[2]);
+  }
+  /** Contact of a sphere against this (static-type) shape: {n, pen, p} or null. */
+  sphereContact(cx, cy, cz, r) {
+    if (this.shape === "ball" || this.shape === "capsule") {
+      let best = null;
+      for (const s of this.spheres()) {
+        const dx = cx - s[0], dy = cy - s[1], dz = cz - s[2];
+        const d = Math.hypot(dx, dy, dz);
+        const pen2 = r + s[3] - d;
+        if (pen2 > 0 && (!best || pen2 > best.pen)) {
+          const n2 = d > 1e-6 ? [dx / d, dy / d, dz / d] : [0, 1, 0];
+          best = { n: n2, pen: pen2, p: [s[0] + n2[0] * s[3], s[1] + n2[1] * s[3], s[2] + n2[2] * s[3]] };
+        }
+      }
+      return best;
+    }
+    const l = this.toLocal([cx, cy, cz]);
+    let q, inside = false, nl;
+    if (this.shape === "cuboid") {
+      const { hx, hy, hz } = this;
+      q = [Math.max(-hx, Math.min(hx, l[0])), Math.max(-hy, Math.min(hy, l[1])), Math.max(-hz, Math.min(hz, l[2]))];
+      if (q[0] === l[0] && q[1] === l[1] && q[2] === l[2]) {
+        inside = true;
+        const dx = hx - Math.abs(l[0]), dy = hy - Math.abs(l[1]), dz = hz - Math.abs(l[2]);
+        if (dy <= dx && dy <= dz) {
+          nl = [0, Math.sign(l[1]) || 1, 0];
+          q = [l[0], nl[1] * hy, l[2]];
+        } else if (dx <= dz) {
+          nl = [Math.sign(l[0]) || 1, 0, 0];
+          q = [nl[0] * hx, l[1], l[2]];
+        } else {
+          nl = [0, 0, Math.sign(l[2]) || 1];
+          q = [l[0], l[1], nl[2] * hz];
+        }
+      }
+    } else {
+      const { hh, r: cr } = this;
+      const rad = Math.hypot(l[0], l[2]);
+      const k = rad > cr ? cr / rad : 1;
+      q = [l[0] * k, Math.max(-hh, Math.min(hh, l[1])), l[2] * k];
+      if (rad <= cr && Math.abs(l[1]) <= hh) {
+        inside = true;
+        const dr = cr - rad, dy = hh - Math.abs(l[1]);
+        if (dy <= dr) {
+          nl = [0, Math.sign(l[1]) || 1, 0];
+          q = [l[0], nl[1] * hh, l[2]];
+        } else {
+          nl = rad > 1e-6 ? [l[0] / rad, 0, l[2] / rad] : [1, 0, 0];
+          q = [nl[0] * cr, l[1], nl[2] * cr];
+        }
+      }
+    }
+    let n, pen;
+    if (inside) {
+      const dist = Math.hypot(q[0] - l[0], q[1] - l[1], q[2] - l[2]);
+      n = this.toWorldDir(nl);
+      pen = r + dist;
+    } else {
+      const dx = l[0] - q[0], dy = l[1] - q[1], dz = l[2] - q[2];
+      const d = Math.hypot(dx, dy, dz);
+      if (d >= r) return null;
+      n = this.toWorldDir(d > 1e-9 ? [dx / d, dy / d, dz / d] : [0, 1, 0]);
+      pen = r - d;
+    }
+    const wp = this.toWorldDir(q);
+    return { n, pen, p: [wp[0] + this.pos[0], wp[1] + this.pos[1], wp[2] + this.pos[2]] };
+  }
+  /** Ray hit distance or -1. */
+  rayHit(o, d, maxToi, solid) {
+    if (!rayAabb(o, d, this.aabb, maxToi)) return -1;
+    if (this.shape === "ball" || this.shape === "capsule") {
+      let best = -1;
+      for (const s of this.spheres()) {
+        const t2 = raySphere(o, d, s, solid);
+        if (t2 >= 0 && t2 <= maxToi && (best < 0 || t2 < best)) best = t2;
+      }
+      return best;
+    }
+    const lo = this.toLocal(o);
+    const ld = isIdentity(this.rot) ? d : qRot(qConj(this.rot), d[0], d[1], d[2]);
+    let t0 = -Infinity, t1 = Infinity;
+    const slab = (oo, dd, h) => {
+      if (Math.abs(dd) < 1e-12) return Math.abs(oo) <= h;
+      let a = (-h - oo) / dd, b = (h - oo) / dd;
+      if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a);
+      t1 = Math.min(t1, b);
+      return t0 <= t1;
+    };
+    if (this.shape === "cuboid") {
+      if (!slab(lo[0], ld[0], this.hx) || !slab(lo[1], ld[1], this.hy) || !slab(lo[2], ld[2], this.hz)) return -1;
+    } else {
+      if (!slab(lo[1], ld[1], this.hh)) return -1;
+      const a = ld[0] * ld[0] + ld[2] * ld[2];
+      const b = 2 * (lo[0] * ld[0] + lo[2] * ld[2]);
+      const c = lo[0] * lo[0] + lo[2] * lo[2] - this.r * this.r;
+      if (a < 1e-12) {
+        if (c > 0) return -1;
+      } else {
+        const disc = b * b - 4 * a * c;
+        if (disc < 0) return -1;
+        const sq = Math.sqrt(disc);
+        t0 = Math.max(t0, (-b - sq) / (2 * a));
+        t1 = Math.min(t1, (-b + sq) / (2 * a));
+        if (t0 > t1) return -1;
+      }
+    }
+    if (t1 < 0) return -1;
+    const t = t0 < 0 ? solid ? 0 : t1 : t0;
+    return t <= maxToi ? t : -1;
+  }
+};
+function rayAabb(o, d, b, maxToi) {
+  let t0 = 0, t1 = maxToi;
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(d[i]) < 1e-12) {
+      if (o[i] < b[i] || o[i] > b[i + 3]) return false;
+      continue;
+    }
+    let a = (b[i] - o[i]) / d[i], c = (b[i + 3] - o[i]) / d[i];
+    if (a > c) [a, c] = [c, a];
+    t0 = Math.max(t0, a);
+    t1 = Math.min(t1, c);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+function raySphere(o, d, s, solid) {
+  const ox = o[0] - s[0], oy = o[1] - s[1], oz = o[2] - s[2];
+  const b = ox * d[0] + oy * d[1] + oz * d[2];
+  const c = ox * ox + oy * oy + oz * oz - s[3] * s[3];
+  if (c <= 0) return solid ? 0 : -b + Math.sqrt(b * b - c);
+  const disc = b * b - c;
+  if (disc < 0 || b > 0) return -1;
+  return -b - Math.sqrt(disc);
+}
+var overlap = (a, b) => a[0] <= b[3] && a[3] >= b[0] && a[1] <= b[4] && a[4] >= b[1] && a[2] <= b[5] && a[5] >= b[2];
+var Ray = class {
+  constructor(origin, dir) {
+    this.origin = origin;
+    this.dir = dir;
+  }
+};
+var EventQueue = class {
+  constructor() {
+    this.list = [];
+  }
+  drainCollisionEvents(cb) {
+    const l = this.list;
+    this.list = [];
+    for (const [a, b] of l) cb(a, b, true);
+  }
+  free() {
+    this.list = [];
+  }
+};
+var World = class {
+  constructor(gravity) {
+    this.gravity = [gravity.x, gravity.y, gravity.z];
+    this.timestep = 1 / 60;
+    this.bodies = /* @__PURE__ */ new Set();
+    this.colliders = [];
+    this.handleSeq = 1;
+    this.contacts = /* @__PURE__ */ new Set();
+  }
+  createRigidBody(desc) {
+    const b = new RigidBody(this, desc);
+    this.bodies.add(b);
+    return b;
+  }
+  createCollider(desc, body) {
+    const c = new Collider(this.handleSeq++, desc, body);
+    body.colliders.push(c);
+    if (body.type === DYNAMIC) body.invMass = 1 / body.colliders.reduce((m, x) => m + x.mass, 0);
+    this.colliders.push(c);
+    return c;
+  }
+  removeRigidBody(body) {
+    this.bodies.delete(body);
+    const gone = new Set(body.colliders);
+    this.colliders = this.colliders.filter((c) => !gone.has(c));
+    body.colliders = [];
+  }
+  castRay(ray, maxToi, solid, _flags, _groups, excludeCollider, excludeBody) {
+    const o = [ray.origin.x, ray.origin.y, ray.origin.z];
+    const d = [ray.dir.x, ray.dir.y, ray.dir.z];
+    let best = null, bestT = Infinity;
+    for (const c of this.colliders) {
+      if (!c.enabled || c === excludeCollider || excludeBody && c.body === excludeBody) continue;
+      const t = c.rayHit(o, d, maxToi, solid);
+      if (t >= 0 && t < bestT) {
+        bestT = t;
+        best = c;
+      }
+    }
+    return best ? { collider: best, timeOfImpact: bestT, toi: bestT } : null;
+  }
+  step(eventQueue) {
+    const dt = this.timestep;
+    for (const b of this.bodies) {
+      if (b.type !== KINEMATIC) continue;
+      if (b.nextT) {
+        b.kv = [(b.nextT[0] - b.t[0]) / dt, (b.nextT[1] - b.t[1]) / dt, (b.nextT[2] - b.t[2]) / dt];
+        b.t = b.nextT;
+        b.nextT = null;
+      } else b.kv = [0, 0, 0];
+      if (b.nextQ) {
+        let dq = qMul(b.nextQ, qConj(b.q));
+        if (dq[3] < 0) dq = dq.map((x) => -x);
+        const s = Math.hypot(dq[0], dq[1], dq[2]);
+        const ang = 2 * Math.atan2(s, dq[3]);
+        b.kw = s > 1e-9 ? [dq[0] / s * ang / dt, dq[1] / s * ang / dt, dq[2] / s * ang / dt] : [0, 0, 0];
+        b.q = b.nextQ;
+        b.nextQ = null;
+      } else b.kw = [0, 0, 0];
+      for (const c of b.colliders) c.update();
+    }
+    const dyn = [];
+    let maxSpeed = 0;
+    for (const b of this.bodies) {
+      if (b.type !== DYNAMIC) continue;
+      dyn.push(b);
+      maxSpeed = Math.max(maxSpeed, Math.hypot(b.v[0], b.v[1], b.v[2]) + Math.abs(this.gravity[1]) * dt);
+    }
+    const subs = Math.max(1, Math.min(8, Math.ceil(maxSpeed * dt / 0.18)));
+    const h = dt / subs;
+    const touching = /* @__PURE__ */ new Set();
+    const solids = this.colliders.filter((c) => c.enabled && c.body.type !== DYNAMIC);
+    for (let s = 0; s < subs; s++) {
+      for (const b of dyn) {
+        b.v[0] += this.gravity[0] * h;
+        b.v[1] += this.gravity[1] * h;
+        b.v[2] += this.gravity[2] * h;
+        b.t[0] += b.v[0] * h;
+        b.t[1] += b.v[1] * h;
+        b.t[2] += b.v[2] * h;
+        for (const c of b.colliders) c.update();
+      }
+      for (let iter = 0; iter < 2; iter++) {
+        for (const b of dyn) {
+          for (const c of b.colliders) {
+            if (!c.enabled) continue;
+            for (const o of solids) {
+              if (!overlap(c.aabb, o.aabb)) continue;
+              let best = null;
+              for (const sp of c.spheres()) {
+                const ct = o.sphereContact(sp[0], sp[1], sp[2], sp[3]);
+                if (ct && (!best || ct.pen > best.pen)) best = ct;
+              }
+              if (!best) continue;
+              this._resolveStatic(b, c, o, best);
+              touching.add(pairKey(c, o));
+            }
+          }
+        }
+        for (let i = 0; i < dyn.length; i++) {
+          const a = dyn[i];
+          for (let j = i + 1; j < dyn.length; j++) {
+            const b2 = dyn[j];
+            for (const ca of a.colliders) for (const cb of b2.colliders) {
+              if (!ca.enabled || !cb.enabled || !overlap(ca.aabb, cb.aabb)) continue;
+              let best = null;
+              for (const sp of ca.spheres()) {
+                const ct = cb.sphereContact(sp[0], sp[1], sp[2], sp[3]);
+                if (ct && (!best || ct.pen > best.pen)) best = ct;
+              }
+              if (!best) continue;
+              this._resolveDynamic(a, ca, b2, cb, best);
+              touching.add(pairKey(ca, cb));
+            }
+          }
+        }
+      }
+    }
+    for (const b of dyn) {
+      if (b.lockRot) {
+        b.q = [0, 0, 0, 1];
+        continue;
+      }
+      const c = b.colliders[0];
+      if (c && c.shape === "ball" && b._ground) {
+        const n = b._ground;
+        b.w = [(n[1] * b.v[2] - n[2] * b.v[1]) / c.r, (n[2] * b.v[0] - n[0] * b.v[2]) / c.r, (n[0] * b.v[1] - n[1] * b.v[0]) / c.r];
+      }
+      b._ground = null;
+      const wl = Math.hypot(b.w[0], b.w[1], b.w[2]);
+      if (wl > 1e-6) {
+        const ang = wl * dt;
+        const sn = Math.sin(ang / 2) / wl;
+        b.q = qNorm(qMul([b.w[0] * sn, b.w[1] * sn, b.w[2] * sn, Math.cos(ang / 2)], b.q));
+      }
+    }
+    if (eventQueue) {
+      for (const k of touching) {
+        if (this.contacts.has(k)) continue;
+        const [a, b] = k.split(":").map(Number);
+        const ca = this._byHandle(a), cb = this._byHandle(b);
+        if (ca && cb && (ca.events || cb.events)) eventQueue.list.push([a, b]);
+      }
+    }
+    this.contacts = touching;
+  }
+  _byHandle(h) {
+    if (!this._handleMap || this._handleMapSize !== this.colliders.length) {
+      this._handleMap = new Map(this.colliders.map((c) => [c.handle, c]));
+      this._handleMapSize = this.colliders.length;
+    }
+    return this._handleMap.get(h);
+  }
+  _resolveStatic(b, c, o, ct) {
+    const n = ct.n;
+    b.t[0] += n[0] * ct.pen;
+    b.t[1] += n[1] * ct.pen;
+    b.t[2] += n[2] * ct.pen;
+    for (const cc of b.colliders) cc.update();
+    const sv = o.body.pointVel(ct.p);
+    const rv = [b.v[0] - sv[0], b.v[1] - sv[1], b.v[2] - sv[2]];
+    const vn = rv[0] * n[0] + rv[1] * n[1] + rv[2] * n[2];
+    if (vn < 0) {
+      const e = Math.max(c.restitution, o.restitution);
+      const k = -(1 + (vn < -2 ? e : 0)) * vn;
+      b.v[0] += n[0] * k;
+      b.v[1] += n[1] * k;
+      b.v[2] += n[2] * k;
+    }
+    const mu = Math.min(c.friction, o.friction);
+    if (mu > 0) {
+      const vn2 = (b.v[0] - sv[0]) * n[0] + (b.v[1] - sv[1]) * n[1] + (b.v[2] - sv[2]) * n[2];
+      const tx = b.v[0] - sv[0] - n[0] * vn2, ty = b.v[1] - sv[1] - n[1] * vn2, tz = b.v[2] - sv[2] - n[2] * vn2;
+      const damp = Math.min(1, mu * 0.02);
+      b.v[0] -= tx * damp;
+      b.v[1] -= ty * damp;
+      b.v[2] -= tz * damp;
+    }
+    if (n[1] > 0.5) b._ground = n;
+  }
+  _resolveDynamic(a, ca, b, cb, ct) {
+    const n = ct.n;
+    const ia = a.invMass, ib = b.invMass, sum = ia + ib || 1;
+    a.t[0] += n[0] * ct.pen * (ia / sum);
+    a.t[1] += n[1] * ct.pen * (ia / sum);
+    a.t[2] += n[2] * ct.pen * (ia / sum);
+    b.t[0] -= n[0] * ct.pen * (ib / sum);
+    b.t[1] -= n[1] * ct.pen * (ib / sum);
+    b.t[2] -= n[2] * ct.pen * (ib / sum);
+    for (const c of a.colliders) c.update();
+    for (const c of b.colliders) c.update();
+    const vn = (a.v[0] - b.v[0]) * n[0] + (a.v[1] - b.v[1]) * n[1] + (a.v[2] - b.v[2]) * n[2];
+    if (vn >= 0) return;
+    const e = Math.max(ca.restitution, cb.restitution);
+    const j = -(1 + e) * vn / sum;
+    a.v[0] += n[0] * j * ia;
+    a.v[1] += n[1] * j * ia;
+    a.v[2] += n[2] * j * ia;
+    b.v[0] -= n[0] * j * ib;
+    b.v[1] -= n[1] * j * ib;
+    b.v[2] -= n[2] * j * ib;
+    if (n[1] > 0.5) a._ground = n;
+    if (n[1] < -0.5) b._ground = [-n[0], -n[1], -n[2]];
+  }
+  free() {
+    this.bodies.clear();
+    this.colliders = [];
+  }
+};
+function pairKey(a, b) {
+  return a.handle < b.handle ? `${a.handle}:${b.handle}` : `${b.handle}:${a.handle}`;
+}
+var MiniPhysics = {
+  init: async () => {
+  },
+  World,
+  RigidBodyDesc,
+  ColliderDesc,
+  Ray,
+  EventQueue,
+  ActiveEvents: { COLLISION_EVENTS: 1 },
+  CoefficientCombineRule: { Average: 0, Min: 1, Multiply: 2, Max: 3 }
+};
+var MiniPhysics_default = MiniPhysics;
+
+// js/LocalNetwork.js
 var PLAYLIST = {
   rounds: [
     { pool: ["race_bean_dash.json"] },
@@ -2904,21 +3575,6 @@ var PLAYLIST = {
     { pool: ["final_crown_summit.json"] }
   ]
 };
-async function loadRapier() {
-  let lastErr;
-  for (const url of RAPIER_URLS) {
-    try {
-      const mod = await import(url);
-      const R = mod.default ?? mod;
-      await R.init();
-      return R;
-    } catch (err) {
-      lastErr = err;
-      console.warn("Rapier load failed from", url, err);
-    }
-  }
-  throw lastErr;
-}
 var Network = class {
   constructor() {
     this.rtt = 0;
@@ -2937,13 +3593,8 @@ var Network = class {
     }
   }
   async join(profile2) {
-    let R;
-    try {
-      R = await loadRapier();
-    } catch (err) {
-      this._emit("connect_error", err);
-      return;
-    }
+    const R = MiniPhysics_default;
+    await R.init();
     const playlist = {
       rounds: PLAYLIST.rounds,
       pick: (i) => {
@@ -2985,7 +3636,7 @@ var Network = class {
 };
 
 // js/LevelBuilder.js
-import * as THREE from "three";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
 var texCache = /* @__PURE__ */ new Map();
 function canvasTex(key, draw, size = 128) {
   if (texCache.has(key)) return texCache.get(key);
@@ -3539,7 +4190,7 @@ var LevelBuilder2 = class {
 };
 
 // js/Bean.js
-import * as THREE2 from "three";
+import * as THREE2 from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
 var textureCache = /* @__PURE__ */ new Map();
 function bodyTexture(color, pattern) {
   const key = `${color}|${pattern}`;
@@ -3761,7 +4412,7 @@ var Bean = class {
 };
 
 // js/CameraRig.js
-import * as THREE3 from "three";
+import * as THREE3 from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
 var CameraRig = class {
   constructor(camera2, dom) {
     this.camera = camera2;
@@ -4220,7 +4871,7 @@ var Sfx = class {
 };
 
 // js/Effects.js
-import * as THREE4 from "three";
+import * as THREE4 from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
 var CONFETTI = ["#ff5fa2", "#ffd60a", "#4cc9f0", "#7bd389", "#b388ff", "#ff9f1c"];
 var Effects = class {
   constructor(scene2, max = 600) {
@@ -4953,6 +5604,7 @@ function frame() {
   sun.target.updateMatrixWorld();
   renderer.render(scene, camera);
 }
+window.__gameBooted = true;
 frame();
 
 </script>
